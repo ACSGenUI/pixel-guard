@@ -243,93 +243,93 @@ export function createServer(): McpServer {
   };
 
   // Tool: validateVisual - Validate a block visually; takes block name and constructs library + snapshot URLs
-  registerAppTool(
-    server,
-    "validateVisual",
-    {
-      title: "Validate Visual",
-      description:
-        "Run visual validation for a block. Requires block name (e.g. cards, tabs, hero). Optionally pass variationIndex, viewport, baseUrl. Constructs the library page URL and baseline snapshot URL and opens the Pixel Guard UI with the overlay.",
-      inputSchema: validateVisualInputSchema,
-      _meta: { ui: { resourceUri } },
-    },
-    async (params): Promise<CallToolResult> => {
-      type Args = {
-        blockName: string;
-        variationIndex?: number;
-        viewport?: string;
-        baseUrl?: string;
-      };
-      // SDK passes parsed args as first param when inputSchema is set
-      const maybeArgs = params as unknown;
-      const args: Args =
-        typeof maybeArgs === "object" &&
-        maybeArgs !== null &&
-        "blockName" in maybeArgs &&
-        typeof (maybeArgs as Args).blockName === "string"
-          ? (maybeArgs as Args)
-          : (typeof maybeArgs === "object" && maybeArgs !== null && "arguments" in maybeArgs
-              ? (maybeArgs as { arguments?: Args }).arguments
-              : undefined) ?? ({} as Args);
-      const blockName = typeof args.blockName === "string" ? args.blockName.trim() : "";
-      if (!blockName) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: false,
-                message: "Missing required argument: blockName (e.g. cards, tabs, hero).",
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
+  // registerAppTool(
+  //   server,
+  //   "validateVisual",
+  //   {
+  //     title: "Validate Visual",
+  //     description:
+  //       "Run visual validation for a block. Requires block name (e.g. cards, tabs, hero). Optionally pass variationIndex, viewport, baseUrl. Constructs the library page URL and baseline snapshot URL and opens the Pixel Guard UI with the overlay.",
+  //     inputSchema: validateVisualInputSchema,
+  //     _meta: { ui: { resourceUri } },
+  //   },
+  //   async (params): Promise<CallToolResult> => {
+  //     type Args = {
+  //       blockName: string;
+  //       variationIndex?: number;
+  //       viewport?: string;
+  //       baseUrl?: string;
+  //     };
+  //     // SDK passes parsed args as first param when inputSchema is set
+  //     const maybeArgs = params as unknown;
+  //     const args: Args =
+  //       typeof maybeArgs === "object" &&
+  //       maybeArgs !== null &&
+  //       "blockName" in maybeArgs &&
+  //       typeof (maybeArgs as Args).blockName === "string"
+  //         ? (maybeArgs as Args)
+  //         : (typeof maybeArgs === "object" && maybeArgs !== null && "arguments" in maybeArgs
+  //             ? (maybeArgs as { arguments?: Args }).arguments
+  //             : undefined) ?? ({} as Args);
+  //     const blockName = typeof args.blockName === "string" ? args.blockName.trim() : "";
+  //     if (!blockName) {
+  //       return {
+  //         content: [
+  //           {
+  //             type: "text",
+  //             text: JSON.stringify({
+  //               success: false,
+  //               message: "Missing required argument: blockName (e.g. cards, tabs, hero).",
+  //             }),
+  //           },
+  //         ],
+  //         isError: true,
+  //       };
+  //     }
 
-      const baseUrl =
-        typeof args.baseUrl === "string" && args.baseUrl
-          ? args.baseUrl
-          : DEFAULT_BASE_URL;
-      const variationIndex =
-        typeof args.variationIndex === "number" && args.variationIndex >= 0
-          ? args.variationIndex
-          : 0;
-      const viewport =
-        typeof args.viewport === "string" && args.viewport
-          ? args.viewport
-          : "desktop";
+  //     const baseUrl =
+  //       typeof args.baseUrl === "string" && args.baseUrl
+  //         ? args.baseUrl
+  //         : DEFAULT_BASE_URL;
+  //     const variationIndex =
+  //       typeof args.variationIndex === "number" && args.variationIndex >= 0
+  //         ? args.variationIndex
+  //         : 0;
+  //     const viewport =
+  //       typeof args.viewport === "string" && args.viewport
+  //         ? args.viewport
+  //         : "desktop";
 
-      const libraryUrl = buildLibraryUrl(blockName, baseUrl, variationIndex);
-      const imageUrl = buildSnapshotUrl(
-        blockName,
-        baseUrl,
-        variationIndex,
-        viewport
-      );
-      const componentName = blockName.toLowerCase().replace(/\s+/g, "-");
-      const imageData = await fetchImageAsBase64(imageUrl);
+  //     const libraryUrl = buildLibraryUrl(blockName, baseUrl, variationIndex);
+  //     const imageUrl = buildSnapshotUrl(
+  //       blockName,
+  //       baseUrl,
+  //       variationIndex,
+  //       viewport
+  //     );
+  //     const componentName = blockName.toLowerCase().replace(/\s+/g, "-");
+  //     const imageData = await fetchImageAsBase64(imageUrl);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              message: `Visual validation for block "${blockName}". Use the overlay to compare baseline with current.`,
-              blockName,
-              componentName,
-              viewport,
-              variationIndex,
-              libraryUrl,
-              imageUrl,
-              imageData,
-            }),
-          },
-        ],
-      };
-    }
-  );
+  //     return {
+  //       content: [
+  //         {
+  //           type: "text",
+  //           text: JSON.stringify({
+  //             success: true,
+  //             message: `Visual validation for block "${blockName}". Use the overlay to compare baseline with current.`,
+  //             blockName,
+  //             componentName,
+  //             viewport,
+  //             variationIndex,
+  //             libraryUrl,
+  //             imageUrl,
+  //             imageData,
+  //           }),
+  //         },
+  //       ],
+  //     };
+  //   }
+  // );
 
   const getBlockSnapshotInputSchema = {
     blockName: z.string().min(1).describe("Block name (e.g. tabs, cards, hero)"),
@@ -386,11 +386,11 @@ export function createServer(): McpServer {
     server,
     "runVisualTest",
     {
-      title: "Run Visual Test",
+      title: "Run Visual Test (Step 1)",
       description:
-        "Run the Playwright visual test for a block by name. Requires the visual test server to be running (e.g. npm run test:visual:server). Returns test output and opens the Playwright report in a dedicated report view.",
+        "Step 1: Run the Playwright visual test for a block by name. Requires the visual test server to be running (e.g. npm run test:visual:server). Upon completion, call openVisualTestReport (Step 2) to open the report UI.",
       inputSchema: runVisualTestInputSchema,
-      _meta: { ui: { resourceUri: reportResourceUri } },
+      _meta: { ui: {} },
     },
     async (params): Promise<CallToolResult> => {
       type Args = { blockName: string };
@@ -474,6 +474,7 @@ export function createServer(): McpServer {
                 blockName,
                 component,
                 reportResourceUri,
+                nextStep: "Call openVisualTestReport to open the report view.",
               }),
             },
           ],
@@ -501,11 +502,44 @@ export function createServer(): McpServer {
     }
   );
 
+  // Step 2: Call after runVisualTest completes; opens the report UI.
+  registerAppTool(
+    server,
+    "openVisualTestReport",
+    {
+      title: "Open Visual Test Report (Step 2)",
+      description:
+        "Step 2: Call this after runVisualTest has completed to open the Playwright report view. Returns report URL and resource URI. Opens the report UI when invoked.",
+      inputSchema: {},
+      _meta: { ui: { resourceUri: reportResourceUri } },
+    },
+    async (): Promise<CallToolResult> => {
+      const reportUrl = lastPlaywrightReportUrl ?? "";
+      const hasReport = reportUrl.length > 0;
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              hasReport,
+              reportUrl: reportUrl || null,
+              reportResourceUri: hasReport ? reportResourceUri : null,
+              message: hasReport
+                ? "Open the report view using reportResourceUri, or open reportUrl in a new tab."
+                : "No report available. Run runVisualTest for a block first, then call this tool again.",
+            }),
+          },
+        ],
+      };
+    }
+  );
+
   server.registerPrompt(
     "run-visual-test",
     {
       title: "Run Visual Test",
-      description: "Run the visual test for a block using the MCP tool. Provides a user message that triggers runVisualTest.",
+      description:
+        "Run the visual test for a block in two steps: (1) runVisualTest to execute the test, (2) openVisualTestReport to open the report when done.",
       argsSchema: {
         blockName: z.string().min(1).describe("Block name to run visual test for (e.g. tabs, cards, hero)"),
       },
@@ -517,7 +551,7 @@ export function createServer(): McpServer {
             role: "user",
             content: {
               type: "text",
-              text: `run visual test for ${blockName} block using mcp tool`,
+              text: `Run the visual test for the ${blockName} block: first call the runVisualTest tool with blockName "${blockName}", and when it completes successfully call openVisualTestReport to open the report view.`,
             },
           },
         ],
@@ -526,19 +560,22 @@ export function createServer(): McpServer {
   );
 
   server.registerPrompt(
-    "provide-fix",
+    "suggest-fix",
     {
-      title: "Provide Fix",
-      description: "Verify the issue by comparing the original snapshot and current snapshot of the tabs block and provide the fix.",
+      title: "Suggest Fix",
+      description: "Verify the issue by comparing the original snapshot and current snapshot of the given block and suggest the fix.",
+      argsSchema: {
+        blockName: z.string().min(1).describe("Block name (e.g. tabs, cards, hero)"),
+      },
     },
-    async () => {
+    async ({ blockName }) => {
       return {
         messages: [
           {
             role: "user",
             content: {
               type: "text",
-              text: "verify the issue by comparing the original snapshot and current snapshot of the tabs block and provide the fix",
+              text: `verify the issue by comparing the original snapshot and current snapshot of the ${blockName} block and provide the fix`,
             },
           },
         ],
