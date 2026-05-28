@@ -13,5 +13,5 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["server.ts", "main.ts"]
+  "include": ["server.ts", "main.ts", "compare-pages.ts", "paths.ts"]
 }

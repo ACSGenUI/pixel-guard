@@ -8,7 +8,8 @@
     "watch": "cross-env INPUT=pixel-guard.html vite build --watch",
     "serve": "tsx main.ts",
     "start": "cross-env NODE_ENV=development npm run build && npm run serve",
-    "dev": "cross-env NODE_ENV=development concurrently \"npm run watch\" \"npm run serve\""
+    "dev": "cross-env NODE_ENV=development concurrently \"npm run watch\" \"npm run serve\"",
+    "playwright:install": "playwright install chromium"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,9 @@
     "@modelcontextprotocol/sdk": "^1.26.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "pixelmatch": "^7.1.0",
+    "playwright": "^1.53.1",
+    "pngjs": "^7.0.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "zod": "^4.3.6"
@@ -27,6 +31,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.2.3",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",

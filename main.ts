@@ -19,8 +19,11 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import cors from "cors";
+import express from "express";
 import type { Request, Response } from "express";
-import { createServer, getLastReportStatus } from "./server.js";
+import { PAGE_COMPARE_REPORTS_DIR } from "./compare-pages.js";
+import { PLAYWRIGHT_REPORT_DIR } from "./paths.js";
+import { createServer, getLastReportStatus, getLastPageComparisonStatus } from "./server.js";
 
 export async function startStreamableHTTPServer(
   createServerFn: () => McpServer
@@ -32,10 +35,33 @@ export async function startStreamableHTTPServer(
   });
   app.use(cors());
 
+  if (!fs.existsSync(PAGE_COMPARE_REPORTS_DIR)) {
+    fs.mkdirSync(PAGE_COMPARE_REPORTS_DIR, { recursive: true });
+  }
+  app.use("/page-comparison-reports", express.static(PAGE_COMPARE_REPORTS_DIR));
+
+  if (fs.existsSync(PLAYWRIGHT_REPORT_DIR)) {
+    app.use("/playwright-report", express.static(PLAYWRIGHT_REPORT_DIR));
+    console.log(`Serving Playwright report from repo: ${PLAYWRIGHT_REPORT_DIR}`);
+  } else {
+    console.log(
+      `Playwright report not found at ${PLAYWRIGHT_REPORT_DIR} (run visual tests in the repo first)`
+    );
+  }
+
   app.get("/api/last-report", (_req: Request, res: Response) => {
     const status = getLastReportStatus();
     res.setHeader("Cache-Control", "no-store");
     res.json({ url: status.url ?? null, running: status.running });
+  });
+
+  app.get("/api/last-page-comparison", (_req: Request, res: Response) => {
+    const status = getLastPageComparisonStatus();
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      report: status.report ?? null,
+      running: status.running,
+    });
   });
 
   app.all("/mcp", async (req: Request, res: Response) => {
