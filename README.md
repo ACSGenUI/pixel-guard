@@ -229,9 +229,60 @@ Only relevant when running with `--http` (`npm run dev`, `npm start`, or remote 
 | `http://localhost:3003/reports/<report-id>/` | Comparison artifacts (PNG + manifest) |
 | `http://localhost:3003/playwright-report/` | Playwright HTML report (if present) |
 
-## Page comparisons
+## Usage — compare two pages
 
-Each comparison creates a folder under `PROJECT_ROOT`:
+After Pixel Guard is connected in your MCP client, compare a source (baseline) page against a destination (corrected) page.
+
+### Input template
+
+Paste this in chat with your URLs filled in:
+
+```
+sourceUrl: https://www.example.com/page-before
+destinationUrl: https://www.example.com/page-after
+viewport: desktop
+```
+
+| Field | Required | Values |
+|-------|----------|--------|
+| `sourceUrl` | Yes | Baseline page URL (`http` or `https`) |
+| `destinationUrl` | Yes | Corrected page URL (`http` or `https`) |
+| `viewport` | No | `mobile`, `tablet`, `desktop` (default), `large` |
+
+Example:
+
+```
+sourceUrl: https://www.linzess.com/savings-and-support
+destinationUrl: https://main--abbvie-linzess-eds--nishant-adobe.aem.page/savings-and-support
+viewport: desktop
+```
+
+### Slash command / prompt
+
+Use the MCP prompt **`compare-page-visuals`** (shown as a slash command in Cursor when Pixel Guard is enabled).
+
+You can invoke it with no args — the agent will ask for missing URLs — or pass the same fields as prompt arguments:
+
+- `sourceUrl`
+- `destinationUrl`
+- `viewport` (optional)
+
+### Two-step tool workflow
+
+Pixel Guard runs comparisons in two steps:
+
+| Step | Tool | What it does |
+|------|------|--------------|
+| 1 | `comparePageVisuals` | Captures screenshots, computes pixel diff, writes report to `PROJECT_ROOT/<report-id>/` |
+| 2 | `openPageComparisonReport` | Opens the interactive report view (source, destination, diff images) |
+
+The agent should call **Step 2** after Step 1 completes. If Step 1 returns `action: "request_parameters"`, provide the missing URLs and retry.
+
+### What you get back
+
+- **Pass/fail** based on pixel diff threshold (default 1%)
+- **Summary** — e.g. `12.34% of pixels differ`
+- **Report folder** under `PROJECT_ROOT`:
 
 ```
 <<PROJECT_ROOT>>/
@@ -247,11 +298,14 @@ The MCP report view renders images from:
 - **stdio mode** (`pixel-guard-remote`, `pixel-guard-local`) — base64 embedded in HTML from disk
 - **HTTP mode** (`pixel-guard-app`, `pixel-guard-remote-server`) — served at `/reports/<report-id>/`
 
-### Defaults
+### Optional tool parameters
 
-- Viewports: `mobile`, `tablet`, `desktop`, `large`
-- Diff threshold: `maxDiffPixelRatio = 0.01` (1%)
-- Full-page screenshots: enabled
+Advanced options for `comparePageVisuals` (defaults usually fine):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `maxDiffPixelRatio` | `0.01` | Pass threshold (0–1). `0.01` = 1% |
+| `fullPage` | `true` | Full-page screenshots |
 
 ---
 
