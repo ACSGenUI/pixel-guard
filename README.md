@@ -84,7 +84,35 @@ Do not point `npx` or `node` directly at `<<pixel-guard-source-directory>>/outpu
 
 Run `npm run build` before enabling this config so `output/main.js` exists.
 
-### 2) HTTP MCP server (`pixel-guard-app`)
+### 2) Remote stdio via `npx` (`pixel-guard-remote`)
+
+Requires the GitHub branch to include `bin/pixel-guard` (shell launcher) and `"prepare": "npm run build"`.
+
+```json
+{
+  "mcpServers": {
+    "pixel-guard-remote": {
+      "command": "npx",
+      "args": ["-y", "-p", "github:ACSGenUI/pixel-guard#site-compare", "pixel-guard"],
+      "cwd": "<<current working directory>>"
+    }
+  }
+}
+```
+
+- Use `-y` so `npx` does not prompt.
+- Do **not** pass `--stdio` in `args`; the `pixel-guard` bin starts stdio automatically.
+- After updating the GitHub branch, clear stale cache: `rm -rf ~/.npm/_npx/a09aac79fc8792d3` (or run `npx clear-npx-cache` if available).
+
+**Broken config (runs JS with `sh`, causes `import: command not found`):**
+
+```json
+"args": ["https://github.com/ACSGenUI/pixel-guard#site-compare", "--stdio"]
+```
+
+The old branch set `"bin": { "pixel-guard": "output/server.js" }`, which `npx` could execute as a shell script instead of via Node.
+
+### 3) HTTP MCP server (`pixel-guard-app`)
 
 From `<<pixel-guard-source-directory>>`:
 
@@ -148,6 +176,31 @@ The manifest includes diff statistics such as:
 - Full-page screenshots are enabled by default.
 
 ## FAQ
+
+### `import: command not found` from `.bin/pixel-guard`
+
+`npx` is executing JavaScript with `sh` instead of Node. This happens when the package bin points at `output/server.js` without a shell launcher.
+
+**Fix now (local):**
+
+```json
+{
+  "command": "node",
+  "args": [
+    "<<pixel-guard-source-directory>>/output/main.js",
+    "--stdio"
+  ],
+  "cwd": "<<pixel-guard-source-directory>>"
+}
+```
+
+**Fix for remote `npx`:** push a branch with `bin/pixel-guard` + `"prepare": "npm run build"`, then use:
+
+```json
+"args": ["-y", "-p", "github:ACSGenUI/pixel-guard#site-compare", "pixel-guard"]
+```
+
+Clear the old npx cache folder under `~/.npm/_npx/` before reconnecting.
 
 ### MCP server does not show up in Cursor / Claude
 
