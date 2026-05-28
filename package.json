@@ -9,8 +9,7 @@
     "serve": "tsx main.ts",
     "start": "cross-env NODE_ENV=development npm run build && npm run serve",
     "dev": "cross-env NODE_ENV=development concurrently \"npm run watch\" \"npm run serve\"",
-    "playwright:install": "playwright install chromium",
-    "prepare": "npm run build"
+    "playwright:install": "playwright install chromium"
   },
   "bin": {
     "pixel-guard": "bin/pixel-guard"
@@ -21,6 +20,7 @@
   "description": "Pixel Guard - UI Visual Validator MCP App",
   "files": [
     "bin/",
+    "output/",
     "src/",
     "compare-pages.ts",
     "main.ts",

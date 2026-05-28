@@ -1,9 +1,29 @@
 #!/usr/bin/env sh
 set -e
 
-basedir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+# Follow symlinks so .bin/pixel-guard resolves to .../pixel-guard/bin/pixel-guard.
+script=$0
+while [ -L "$script" ]; do
+  link=$(readlink "$script")
+  case "$link" in
+    /*) script="$link" ;;
+    *) script="$(CDPATH= cd -- "$(dirname "$script")" && pwd)/$link" ;;
+  esac
+done
+
+basedir=$(CDPATH= cd -- "$(dirname "$script")" && pwd)
 root=$(CDPATH= cd -- "$basedir/.." && pwd)
 main="$root/output/main.js"
+
+if [ ! -f "$main" ]; then
+  if [ -f "$root/package.json" ] && [ -f "$root/main.ts" ]; then
+    echo "pixel-guard: building in $root..." >&2
+    (cd "$root" && npm run build) || {
+      echo "pixel-guard: build failed in $root" >&2
+      exit 1
+    }
+  fi
+fi
 
 if [ ! -f "$main" ]; then
   echo "pixel-guard: $main not found. Run \"npm run build\" in $root first." >&2
