@@ -18,7 +18,7 @@ export default defineConfig({
     rollupOptions: {
       input: INPUT,
     },
-    outDir: "dist",
+    outDir: "output",
     emptyOutDir: false,
   },
 });
