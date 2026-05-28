@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
+import { getPageComparisonReportBasePath, getReportDir, PROJECT_ROOT } from "./paths.js";
+export { PAGE_COMPARE_REPORTS_DIR, PROJECT_ROOT } from "./paths.js";
 export const PAGE_COMPARE_VIEWPORTS = ["mobile", "tablet", "desktop", "large"];
 export const VIEWPORT_PRESETS = {
     mobile: { width: 320, height: 568 },
@@ -10,8 +12,6 @@ export const VIEWPORT_PRESETS = {
     desktop: { width: 1024, height: 768 },
     large: { width: 1440, height: 900 },
 };
-/** Directory where page comparison reports are written and served from. */
-export const PAGE_COMPARE_REPORTS_DIR = path.join(import.meta.dirname, "page-comparison-reports");
 function padImageToSize(img, targetWidth, targetHeight) {
     if (img.width === targetWidth && img.height === targetHeight) {
         return img;
@@ -44,9 +44,8 @@ function comparePngBuffers(sourceImg, destImg) {
  */
 export async function comparePages({ sourceUrl, destinationUrl, viewport = "desktop", maxDiffPixelRatio = 0.01, fullPage = true, }) {
     const preset = VIEWPORT_PRESETS[viewport] ?? VIEWPORT_PRESETS.desktop;
-    await fs.mkdir(PAGE_COMPARE_REPORTS_DIR, { recursive: true });
     const reportId = `page-compare-${Date.now()}`;
-    const reportDir = path.join(PAGE_COMPARE_REPORTS_DIR, reportId);
+    const reportDir = getReportDir(reportId);
     await fs.mkdir(reportDir, { recursive: true });
     const browser = await chromium.launch();
     try {
@@ -90,12 +89,13 @@ export async function comparePages({ sourceUrl, destinationUrl, viewport = "desk
                 diff: "diff.png",
             },
             createdAt: new Date().toISOString(),
+            projectRoot: PROJECT_ROOT,
         };
         await fs.writeFile(path.join(reportDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf-8");
         return {
             ...manifest,
             reportDir,
-            reportBasePath: `/page-comparison-reports/${reportId}`,
+            reportBasePath: getPageComparisonReportBasePath(reportId),
         };
     }
     finally {

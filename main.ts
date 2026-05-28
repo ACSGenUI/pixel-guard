@@ -1,11 +1,18 @@
+#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.join(__dirname, ".env");
-if (fs.existsSync(envPath)) {
+const envPaths = [
+  ...(process.env.PROJECT_ROOT?.trim()
+    ? [path.join(process.env.PROJECT_ROOT.trim(), ".env")]
+    : []),
+  path.join(__dirname, ".env"),
+];
+for (const envPath of envPaths) {
+  if (!fs.existsSync(envPath)) continue;
   const content = fs.readFileSync(envPath, "utf-8");
   for (const line of content.split("\n")) {
     const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
@@ -21,8 +28,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import cors from "cors";
 import express from "express";
 import type { Request, Response } from "express";
-import { PAGE_COMPARE_REPORTS_DIR } from "./compare-pages.js";
-import { PLAYWRIGHT_REPORT_DIR } from "./paths.js";
+import { PLAYWRIGHT_REPORT_DIR, PROJECT_ROOT } from "./paths.js";
 import { createServer, getLastReportStatus, getLastPageComparisonStatus } from "./server.js";
 
 export async function startStreamableHTTPServer(
@@ -35,10 +41,10 @@ export async function startStreamableHTTPServer(
   });
   app.use(cors());
 
-  if (!fs.existsSync(PAGE_COMPARE_REPORTS_DIR)) {
-    fs.mkdirSync(PAGE_COMPARE_REPORTS_DIR, { recursive: true });
+  if (!fs.existsSync(PROJECT_ROOT)) {
+    fs.mkdirSync(PROJECT_ROOT, { recursive: true });
   }
-  app.use("/page-comparison-reports", express.static(PAGE_COMPARE_REPORTS_DIR));
+  app.use("/reports", express.static(PROJECT_ROOT));
 
   if (fs.existsSync(PLAYWRIGHT_REPORT_DIR)) {
     app.use("/playwright-report", express.static(PLAYWRIGHT_REPORT_DIR));
@@ -116,10 +122,10 @@ export async function startStdioServer(
 }
 
 async function main() {
-  if (process.argv.includes("--stdio")) {
-    await startStdioServer(createServer);
-  } else {
+  if (process.argv.includes("--http")) {
     await startStreamableHTTPServer(createServer);
+  } else {
+    await startStdioServer(createServer);
   }
 }
 

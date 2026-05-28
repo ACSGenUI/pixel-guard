@@ -3,6 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
+import { getPageComparisonReportBasePath, getReportDir, PROJECT_ROOT } from "./paths.js";
+
+export { PAGE_COMPARE_REPORTS_DIR, PROJECT_ROOT } from "./paths.js";
 
 export const PAGE_COMPARE_VIEWPORTS = ["mobile", "tablet", "desktop", "large"] as const;
 export type PageCompareViewport = (typeof PAGE_COMPARE_VIEWPORTS)[number];
@@ -16,12 +19,6 @@ export const VIEWPORT_PRESETS: Record<
   desktop: { width: 1024, height: 768 },
   large: { width: 1440, height: 900 },
 };
-
-/** Directory where page comparison reports are written and served from. */
-export const PAGE_COMPARE_REPORTS_DIR = path.join(
-  import.meta.dirname,
-  "page-comparison-reports"
-);
 
 export type ComparePagesOptions = {
   sourceUrl: string;
@@ -101,9 +98,8 @@ export async function comparePages({
   fullPage = true,
 }: ComparePagesOptions): Promise<ComparePagesResult> {
   const preset = VIEWPORT_PRESETS[viewport] ?? VIEWPORT_PRESETS.desktop;
-  await fs.mkdir(PAGE_COMPARE_REPORTS_DIR, { recursive: true });
   const reportId = `page-compare-${Date.now()}`;
-  const reportDir = path.join(PAGE_COMPARE_REPORTS_DIR, reportId);
+  const reportDir = getReportDir(reportId);
   await fs.mkdir(reportDir, { recursive: true });
 
   const browser = await chromium.launch();
@@ -138,7 +134,9 @@ export async function comparePages({
       diffPixelRatio <= maxDiffPixelRatio ? "passed" : "failed";
     const summary = `${(diffPixelRatio * 100).toFixed(2)}% of pixels differ (threshold ${(maxDiffPixelRatio * 100).toFixed(2)}%).`;
 
-    const manifest: Omit<ComparePagesResult, "reportDir" | "reportBasePath"> = {
+    const manifest: Omit<ComparePagesResult, "reportDir" | "reportBasePath"> & {
+      projectRoot: string;
+    } = {
       reportId,
       status,
       sourceUrl,
@@ -157,6 +155,7 @@ export async function comparePages({
         diff: "diff.png",
       },
       createdAt: new Date().toISOString(),
+      projectRoot: PROJECT_ROOT,
     };
 
     await fs.writeFile(
@@ -168,7 +167,7 @@ export async function comparePages({
     return {
       ...manifest,
       reportDir,
-      reportBasePath: `/page-comparison-reports/${reportId}`,
+      reportBasePath: getPageComparisonReportBasePath(reportId),
     };
   } finally {
     await browser.close();

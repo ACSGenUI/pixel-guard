@@ -1,11 +1,10 @@
+export { PAGE_COMPARE_REPORTS_DIR, PROJECT_ROOT } from "./paths.js";
 export declare const PAGE_COMPARE_VIEWPORTS: readonly ["mobile", "tablet", "desktop", "large"];
 export type PageCompareViewport = (typeof PAGE_COMPARE_VIEWPORTS)[number];
 export declare const VIEWPORT_PRESETS: Record<PageCompareViewport, {
     width: number;
     height: number;
 }>;
-/** Directory where page comparison reports are written and served from. */
-export declare const PAGE_COMPARE_REPORTS_DIR: string;
 export type ComparePagesOptions = {
     sourceUrl: string;
     destinationUrl: string;

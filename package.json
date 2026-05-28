@@ -6,20 +6,19 @@
   "scripts": {
     "build": "tsc --noEmit && cross-env INPUT=pixel-guard.html vite build && tsc -p tsconfig.server.json",
     "watch": "cross-env INPUT=pixel-guard.html vite build --watch",
-    "serve": "tsx main.ts",
+    "serve": "tsx main.ts --http",
     "start": "cross-env NODE_ENV=development npm run build && npm run serve",
     "dev": "cross-env NODE_ENV=development concurrently \"npm run watch\" \"npm run serve\"",
     "playwright:install": "playwright install chromium"
   },
   "bin": {
-    "pixel-guard": "bin/pixel-guard"
+    "pixel-guard": "output/main.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "Pixel Guard - UI Visual Validator MCP App",
   "files": [
-    "bin/",
     "output/",
     "src/",
     "compare-pages.ts",

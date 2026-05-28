@@ -50,18 +50,28 @@ It serves a local MCP server, runs page-to-page visual comparisons with Playwrig
 
 ## Pixel Guard MCP setup
 
-Pixel Guard lives in `mcp-apps/pixel-guard` and can be used in two ways.
+Pixel Guard supports **stdio** (editor launches the process) and **HTTP** (you run a server, editor connects via URL).
 
-In the examples below, replace placeholders with your machine’s paths:
+Replace placeholders with your paths:
 
 | Placeholder | Meaning |
 |-------------|---------|
-| `<<pixel-guard-source-directory>>` | Absolute path to the `mcp-apps/pixel-guard` folder |
-| `<<current working directory>>` | Same as `<<pixel-guard-source-directory>>` when configuring MCP `cwd` |
+| `<<pixel-guard-source-directory>>` | Absolute path to `mcp-apps/pixel-guard` |
+| `<<PROJECT_ROOT>>` | Absolute path to the repo/workspace where reports and artifacts are stored |
 
-### 1) Local stdio MCP server (`pixel-guard-local`)
+### Environment variables
 
-Use `<<pixel-guard-source-directory>>/output/main.js --stdio` as the entrypoint.
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `PROJECT_ROOT` | Remote stdio / HTTP (recommended) | Writes reports to `<<PROJECT_ROOT>>/<report-id>/` |
+| `PIXEL_GUARD_ORIGIN` | Optional (stdio) | Set to `http://localhost:3003` when an HTTP server is also running, so tool output uses HTTP report URLs |
+| `PORT` | Optional | HTTP server port (default `3003`) |
+
+---
+
+### 1) Local stdio (`pixel-guard-local`)
+
+Editor launches Pixel Guard. Reports default to `process.cwd()` unless `PROJECT_ROOT` is set.
 
 ```json
 {
@@ -69,59 +79,61 @@ Use `<<pixel-guard-source-directory>>/output/main.js --stdio` as the entrypoint.
     "pixel-guard-local": {
       "command": "node",
       "args": [
-        "<<pixel-guard-source-directory>>/output/main.js",
-        "--stdio"
+        "<<pixel-guard-source-directory>>/output/main.js"
       ],
-      "cwd": "<<current working directory>>"
+      "env": {
+        "PROJECT_ROOT": "<<PROJECT_ROOT>>"
+      }
     }
   }
 }
 ```
 
-Set `cwd` to `<<pixel-guard-source-directory>>` so `.env`, reports, and relative paths resolve correctly.
+Run `npm run build` first so `output/main.js` exists.
 
-Do not point `npx` or `node` directly at `<<pixel-guard-source-directory>>/output/server.js`; that module defines the server but does not start stdio transport.
+Do **not** point `node` at `output/server.js` — that module defines the server but does not start stdio transport.
 
-Run `npm run build` before enabling this config so `output/main.js` exists.
+---
 
 ### 2) Remote stdio via `npx` (`pixel-guard-remote`)
 
-Requires the GitHub branch to include `bin/pixel-guard` (shell launcher) and `"prepare": "npm run build"`.
+Same as ui-audit remote pattern. Reports are written under `PROJECT_ROOT`, not the npx cache.
 
 ```json
 {
   "mcpServers": {
     "pixel-guard-remote": {
       "command": "npx",
-      "args": ["-y", "-p", "github:ACSGenUI/pixel-guard#site-compare", "pixel-guard"],
-      "cwd": "<<current working directory>>"
+      "args": ["-y", "https://github.com/ACSGenUI/pixel-guard#site-compare"],
+      "env": {
+        "PROJECT_ROOT": "<<PROJECT_ROOT>>"
+      }
     }
   }
 }
 ```
 
 - Use `-y` so `npx` does not prompt.
-- Do **not** pass `--stdio` in `args`; the `pixel-guard` bin starts stdio automatically.
-- After updating the GitHub branch, clear stale cache: `rm -rf ~/.npm/_npx/a09aac79fc8792d3` (or run `npx clear-npx-cache` if available).
+- Do **not** pass `--stdio` or `--http` in `args`; `output/main.js` defaults to stdio for MCP.
+- Without `PIXEL_GUARD_ORIGIN`, `reportUrl` in tool output is a filesystem path under `PROJECT_ROOT`.
+- Clear stale npx cache after GitHub updates: `rm -rf ~/.npm/_npx/*`
 
-**Broken config (runs JS with `sh`, causes `import: command not found`):**
+---
 
-```json
-"args": ["https://github.com/ACSGenUI/pixel-guard#site-compare", "--stdio"]
-```
+### 3) Local HTTP server (`pixel-guard-app`)
 
-The old branch set `"bin": { "pixel-guard": "output/server.js" }`, which `npx` could execute as a shell script instead of via Node.
+Run the server yourself, then connect via URL. Best for dev with hot reload.
 
-### 3) HTTP MCP server (`pixel-guard-app`)
+**Terminal** (from `<<pixel-guard-source-directory>>`):
 
-From `<<pixel-guard-source-directory>>`:
-
-```sh
+```bash
 npm install
-npm run dev
+npm run playwright:install
+npm run build
+PROJECT_ROOT=<<PROJECT_ROOT>> npm run dev
 ```
 
-Then use:
+**MCP config:**
 
 ```json
 {
@@ -132,6 +144,72 @@ Then use:
   }
 }
 ```
+
+Report URLs in tool output: `http://localhost:3003/reports/<report-id>/manifest.json`
+
+---
+
+### 4) Remote HTTP server (`pixel-guard-remote-server`)
+
+Run Pixel Guard as a **standalone HTTP MCP server** (e.g. from a cloned repo or CI host). The editor connects via `url`; no stdio process is spawned by the editor.
+
+**Start the server** (pick one):
+
+```bash
+# Option A — cloned repo
+cd <<pixel-guard-source-directory>>
+npm install && npm run playwright:install && npm run build
+PROJECT_ROOT=<<PROJECT_ROOT>> PORT=3003 node output/main.js --http
+
+# Option B — install from GitHub once, then run HTTP (no --stdio)
+mkdir -p ~/pixel-guard-server && cd ~/pixel-guard-server
+npm install github:ACSGenUI/pixel-guard#site-compare
+PROJECT_ROOT=<<PROJECT_ROOT>> PORT=3003 \
+  node node_modules/pixel-guard/output/main.js --http
+```
+
+**MCP config** (on your machine or any client that can reach the host):
+
+```json
+{
+  "mcpServers": {
+    "pixel-guard-remote-server": {
+      "url": "http://localhost:3003/mcp"
+    }
+  }
+}
+```
+
+For a server on another host, replace `localhost` with the host/IP (and ensure the port is reachable):
+
+```json
+{
+  "mcpServers": {
+    "pixel-guard-remote-server": {
+      "url": "http://your-server.example.com:3003/mcp"
+    }
+  }
+}
+```
+
+**Optional `.env`** in `<<PROJECT_ROOT>>`:
+
+```env
+PROJECT_ROOT=<<PROJECT_ROOT>>
+PORT=3003
+PIXEL_GUARD_ORIGIN=http://localhost:3003
+```
+
+---
+
+### Which mode should I use?
+
+| Config | Transport | Who starts the process | Reports location | Report URLs |
+|--------|-----------|------------------------|------------------|-------------|
+| `pixel-guard-local` | stdio | Editor | `PROJECT_ROOT` or `cwd` | Filesystem (or HTTP if `PIXEL_GUARD_ORIGIN` set) |
+| `pixel-guard-remote` | stdio | Editor via `npx` | `PROJECT_ROOT` | Filesystem (or HTTP if `PIXEL_GUARD_ORIGIN` set) |
+| `pixel-guard-app` | HTTP | You (`npm run dev`) | `PROJECT_ROOT/<report-id>/` | `http://localhost:3003/reports/...` |
+| `pixel-guard-remote-server` | HTTP | You (node / npx) | `PROJECT_ROOT/<report-id>/` | `http://<host>:3003/reports/...` |
 
 ## Scripts
 
@@ -146,14 +224,16 @@ Then use:
 When the HTTP MCP server is running (`npm start` or `npm run dev`):
 
 - MCP: `http://localhost:3003/mcp`
-- Page comparison artifacts: `http://localhost:3003/page-comparison-reports/...`
+- Page comparison artifacts: `http://localhost:3003/reports/<report-id>/...`
 - Playwright report assets (when available): `http://localhost:3003/playwright-report/...`
 
 ## Page visual comparisons
 
 Page comparison runs are saved under:
 
-- `<<pixel-guard-source-directory>>/page-comparison-reports/<report-id>/`
+- `<<PROJECT_ROOT>>/<report-id>/` (contains `manifest.json`, `source.png`, `destination.png`, `diff.png`)
+
+Set `PROJECT_ROOT` in MCP config `env` (remote) or rely on process `cwd` (local fallback).
 
 Each report directory contains:
 
@@ -179,25 +259,22 @@ The manifest includes diff statistics such as:
 
 ### `import: command not found` from `.bin/pixel-guard`
 
-`npx` is executing JavaScript with `sh` instead of Node. This happens when the package bin points at `output/server.js` without a shell launcher.
+`npx` ran a JavaScript file with `sh` instead of Node. Ensure the package `"bin"` points at `output/main.js` (with `#!/usr/bin/env node`) and rebuild.
 
-**Fix now (local):**
+**Fix (local):**
 
 ```json
 {
   "command": "node",
-  "args": [
-    "<<pixel-guard-source-directory>>/output/main.js",
-    "--stdio"
-  ],
+  "args": ["<<pixel-guard-source-directory>>/output/main.js"],
   "cwd": "<<pixel-guard-source-directory>>"
 }
 ```
 
-**Fix for remote `npx`:** push a branch with `bin/pixel-guard` + `"prepare": "npm run build"`, then use:
+**Fix for remote `npx`:**
 
 ```json
-"args": ["-y", "-p", "github:ACSGenUI/pixel-guard#site-compare", "pixel-guard"]
+"args": ["-y", "https://github.com/ACSGenUI/pixel-guard#site-compare"]
 ```
 
 Clear the old npx cache folder under `~/.npm/_npx/` before reconnecting.
@@ -264,7 +341,4 @@ Clear the old npx cache folder under `~/.npm/_npx/` before reconnecting.
 
 ### Should I use stdio or HTTP?
 
-| Mode | Best for |
-|------|----------|
-| **stdio** (`pixel-guard-local`) | Editor-launched MCP, no separate server process to manage |
-| **HTTP** (`pixel-guard-app`) | Dev with hot reload (`npm run dev`), sharing one server across tools |
+See [Which mode should I use?](#which-mode-should-i-use) above.

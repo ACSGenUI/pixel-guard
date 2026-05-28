@@ -14,9 +14,15 @@ import {
   PAGE_COMPARE_VIEWPORTS,
   type PageCompareViewport,
 } from "./compare-pages.js";
-import { PLAYWRIGHT_REPORT_DIR, PLAYWRIGHT_REPORT_INDEX, REPO_ROOT } from "./paths.js";
+import {
+  DIST_DIR,
+  getPageComparisonReportUrl,
+  PLAYWRIGHT_REPORT_DIR,
+  PLAYWRIGHT_REPORT_INDEX,
+  PROJECT_ROOT,
+} from "./paths.js";
 
-const DIST_DIR = path.join(import.meta.dirname, "dist");
+const isStdioMode = !process.argv.includes("--http");
 
 const DEFAULT_BASE_URL = process.env.VISUAL_TEST_BASE_URL ?? "http://localhost:3000";
 const VISUAL_TEST_SERVER_URL =
@@ -302,7 +308,7 @@ export function createServer(): McpServer {
 
   const pixelGuardOrigin =
     process.env.PIXEL_GUARD_ORIGIN ??
-    `http://localhost:${process.env.PORT ?? "3003"}`;
+    (isStdioMode ? "" : `http://localhost:${process.env.PORT ?? "3003"}`);
   const visualTestOrigin = (process.env.VISUAL_TEST_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, "");
 
   const resourceDomains = [
@@ -311,7 +317,7 @@ export function createServer(): McpServer {
     VISUAL_TEST_SERVER_URL,
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-  ].filter((origin, i, arr) => arr.indexOf(origin) === i);
+  ].filter((origin, i, arr) => Boolean(origin) && arr.indexOf(origin) === i);
 
   // Same origins for nested iframes (library page loads in iframe; maps to CSP frame-src)
   const frameDomains = [...resourceDomains];
@@ -460,8 +466,31 @@ export function createServer(): McpServer {
           : "—";
       const basePath =
         typeof manifest.reportBasePath === "string" ? manifest.reportBasePath : "";
+      const reportDir =
+        typeof manifest.reportDir === "string" ? manifest.reportDir : "";
       const pgOrigin = pixelGuardOrigin.replace(/\/$/, "");
-      const imgBase = basePath ? `${pgOrigin}${basePath}` : "";
+      const httpImgBase = pgOrigin && basePath ? `${pgOrigin}${basePath}` : "";
+
+      async function reportImageSrc(filename: string): Promise<string> {
+        if (httpImgBase) {
+          return `${httpImgBase}/${filename}`;
+        }
+        if (!reportDir) return "";
+        try {
+          const buf = await fs.readFile(path.join(reportDir, filename));
+          return `data:image/png;base64,${buf.toString("base64")}`;
+        } catch {
+          return "";
+        }
+      }
+
+      const [sourceImgSrc, destinationImgSrc, diffImgSrc] = reportUrl
+        ? await Promise.all([
+            reportImageSrc("source.png"),
+            reportImageSrc("destination.png"),
+            reportImageSrc("diff.png"),
+          ])
+        : ["", "", ""];
 
       const html = `<!DOCTYPE html>
 <html lang="en">
@@ -498,9 +527,9 @@ export function createServer(): McpServer {
           <div class="meta"><strong>Destination:</strong> ${escapeAttr(destinationUrl)}</div>
         </div>
         <div class="grid">
-          <div class="panel"><h2>Source (baseline)</h2><img src="${escapeAttr(imgBase)}/source.png" alt="Source" /></div>
-          <div class="panel"><h2>Destination (corrected)</h2><img src="${escapeAttr(imgBase)}/destination.png" alt="Destination" /></div>
-          <div class="panel"><h2>Diff</h2><img src="${escapeAttr(imgBase)}/diff.png" alt="Diff" /></div>
+          <div class="panel"><h2>Source (baseline)</h2><img src="${escapeAttr(sourceImgSrc)}" alt="Source" /></div>
+          <div class="panel"><h2>Destination (corrected)</h2><img src="${escapeAttr(destinationImgSrc)}" alt="Destination" /></div>
+          <div class="panel"><h2>Diff</h2><img src="${escapeAttr(diffImgSrc)}" alt="Diff" /></div>
         </div>`
       : `<div class="waiting" id="waiting"><div class="spinner"></div><p>Comparison is running, please wait…</p></div>`}
   </div>
@@ -593,8 +622,6 @@ export function createServer(): McpServer {
       lastPageComparisonReport = undefined;
       lastPageComparisonForResource = undefined;
 
-      const pgOrigin = pixelGuardOrigin.replace(/\/$/, "");
-
       try {
         const data = await comparePages({
           sourceUrl,
@@ -605,8 +632,13 @@ export function createServer(): McpServer {
         });
 
         const reportId = data.reportId;
-        const reportUrl = `${pgOrigin}/page-comparison-reports/${reportId}/manifest.json`;
-        const manifest = { ...data, reportUrl, reportBasePath: data.reportBasePath };
+        const reportUrl = getPageComparisonReportUrl(reportId, data.reportDir);
+        const manifest = {
+          ...data,
+          reportUrl,
+          reportBasePath: data.reportBasePath,
+          projectRoot: PROJECT_ROOT,
+        };
 
         lastPageComparisonReport = { reportId, reportUrl, manifest };
         lastPageComparisonForResource = lastPageComparisonReport;
@@ -628,6 +660,8 @@ export function createServer(): McpServer {
                 viewportName: data.viewportName,
                 reportId,
                 reportUrl,
+                reportDir: data.reportDir,
+                projectRoot: PROJECT_ROOT,
                 reportBasePath: data.reportBasePath,
                 pageComparisonResourceUri,
                 nextStep: "Call openPageComparisonReport to open the comparison report view.",
@@ -944,7 +978,7 @@ export function createServer(): McpServer {
                   stderr: data.stderr,
                   reportUrl,
                   reportPath,
-                  repoRoot: REPO_ROOT,
+                  repoRoot: PROJECT_ROOT,
                 }),
               },
             ],
@@ -966,7 +1000,7 @@ export function createServer(): McpServer {
                 reportUrl,
                 reportPath,
                 reportDir: PLAYWRIGHT_REPORT_DIR,
-                repoRoot: REPO_ROOT,
+                repoRoot: PROJECT_ROOT,
                 blockName,
                 component,
                 reportResourceUri,
@@ -987,7 +1021,7 @@ export function createServer(): McpServer {
                 details: message,
                 reportUrl,
                 reportPath,
-                repoRoot: REPO_ROOT,
+                repoRoot: PROJECT_ROOT,
                 hint: "Ensure the visual test server is running (e.g. npm run test:visual:server from repo root). The HTML report is written under playwright-report/ in the site repo.",
               }),
             },
@@ -1023,7 +1057,7 @@ export function createServer(): McpServer {
               reportUrl: reportUrl || null,
               reportPath: PLAYWRIGHT_REPORT_INDEX,
               reportDir: PLAYWRIGHT_REPORT_DIR,
-              repoRoot: REPO_ROOT,
+              repoRoot: PROJECT_ROOT,
               reportResourceUri: hasReport ? reportResourceUri : null,
               message: hasReport
                 ? "Open the report view using reportResourceUri, or open reportUrl in a new tab. Report files live in the site repo under playwright-report/."
