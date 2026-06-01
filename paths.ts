@@ -4,6 +4,20 @@ import { fileURLToPath } from "node:url";
 
 const PACKAGE_ROOT = path.dirname(fileURLToPath(import.meta.url));
 
+/** Pixel Guard package root (output/ when published, repo root in dev). */
+export { PACKAGE_ROOT };
+
+export function getBundledComponentInventoryTemplatePath(): string {
+  const candidates = [
+    path.join(PACKAGE_ROOT, "templates", "component-inventory-template.csv"),
+    path.join(PACKAGE_ROOT, "..", "templates", "component-inventory-template.csv"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+
 /**
  * Workspace root for generated artifacts (page comparisons, playwright reports).
  * Set via MCP config env PROJECT_ROOT — same pattern as ui-audit remote setup.
@@ -57,4 +71,19 @@ export function getPageComparisonReportUrl(
     return `${origin}${getPageComparisonReportBasePath(reportId)}/manifest.json`;
   }
   return path.join(reportDir, "manifest.json");
+}
+
+export function getReportArtifactUrl(
+  reportId: string,
+  reportDir: string,
+  artifactFile: string
+): string {
+  const isStdio = !process.argv.includes("--http");
+  const origin =
+    process.env.PIXEL_GUARD_ORIGIN?.replace(/\/$/, "") ||
+    (isStdio ? "" : `http://localhost:${process.env.PORT ?? "3003"}`);
+  if (origin) {
+    return `${origin}${getPageComparisonReportBasePath(reportId)}/${artifactFile}`;
+  }
+  return path.join(reportDir, artifactFile);
 }

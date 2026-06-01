@@ -1,3 +1,7 @@
+declare const PACKAGE_ROOT: string;
+/** Pixel Guard package root (output/ when published, repo root in dev). */
+export { PACKAGE_ROOT };
+export declare function getBundledComponentInventoryTemplatePath(): string;
 /**
  * Workspace root for generated artifacts (page comparisons, playwright reports).
  * Set via MCP config env PROJECT_ROOT — same pattern as ui-audit remote setup.
@@ -17,3 +21,4 @@ export declare const PLAYWRIGHT_REPORT_INDEX: string;
 /** Compiled UI bundle directory (output/ when built, package root when running via tsx). */
 export declare const DIST_DIR: string;
 export declare function getPageComparisonReportUrl(reportId: string, reportDir: string): string;
+export declare function getReportArtifactUrl(reportId: string, reportDir: string, artifactFile: string): string;

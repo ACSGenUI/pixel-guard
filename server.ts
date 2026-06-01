@@ -10,6 +10,18 @@ import {
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 import {
+  captureComponentScreenshots,
+  inventoryPageComponents,
+  importComponentInventoryFromCsv,
+  writeComponentInventoryCsvTemplate,
+  readBundledComponentInventoryTemplate,
+  validateComponentWorkflow,
+  COMPONENT_INVENTORY_CSV_FILENAME,
+  COMPONENT_INVENTORY_TEMPLATES_DIR,
+  COMPONENT_INVENTORY_TEMPLATE_RESOURCE_URI,
+  PAGE_COMPARE_VIEWPORTS as COMPONENT_VIEWPORTS,
+} from "./component-workflow.js";
+import {
   comparePages,
   PAGE_COMPARE_VIEWPORTS,
   type PageCompareViewport,
@@ -17,6 +29,7 @@ import {
 import {
   DIST_DIR,
   getPageComparisonReportUrl,
+  getReportArtifactUrl,
   PLAYWRIGHT_REPORT_DIR,
   PLAYWRIGHT_REPORT_INDEX,
   PROJECT_ROOT,
@@ -348,6 +361,28 @@ export function createServer(): McpServer {
                 },
               },
             },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerResource(
+    "component-inventory-template",
+    COMPONENT_INVENTORY_TEMPLATE_RESOURCE_URI,
+    {
+      description:
+        "Bundled CSV template for component inventory. Columns: pageUrl|componentName|selector. Fill rows, copy to PROJECT_ROOT/templates/, then call importComponentInventoryFromCsv.",
+      mimeType: "text/csv",
+    },
+    async () => {
+      const text = await readBundledComponentInventoryTemplate();
+      return {
+        contents: [
+          {
+            uri: COMPONENT_INVENTORY_TEMPLATE_RESOURCE_URI,
+            mimeType: "text/csv",
+            text,
           },
         ],
       };
@@ -740,6 +775,671 @@ export function createServer(): McpServer {
           },
         ],
       };
+    }
+  );
+
+  const captureComponentScreenshotsInputSchema = {
+    inventoryId: z
+      .string()
+      .optional()
+      .describe(
+        "Inventory ID from inventoryPageComponents (recommended). Captures using stored selectors."
+      ),
+    componentIds: z
+      .array(z.string())
+      .optional()
+      .describe("Subset of inventory component ids to capture (e.g. hero-0, cards-1)"),
+    captureReportId: z
+      .string()
+      .optional()
+      .describe(
+        "Existing component-capture-* report id. Pass from prior batch to append PNGs to the same folder."
+      ),
+    batchIndex: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        "Zero-based batch index (default 0). For 13 components with batchSize 4, call batchIndex 0..3."
+      ),
+    batchSize: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe(
+        "Components per batch (default 4). Keeps each tool call under MCP timeout."
+      ),
+    pageUrl: z
+      .string()
+      .optional()
+      .describe(
+        "Page URL (legacy one-step mode when inventoryId omitted). Runs inventory + capture together."
+      ),
+    components: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Component/block names for inventory (e.g. hero, cards). Omit to auto-discover all EDS blocks."
+      ),
+    viewport: z
+      .enum(PAGE_COMPARE_VIEWPORTS)
+      .optional()
+      .describe(`Viewport preset: ${PAGE_COMPARE_VIEWPORTS.join(", ")} (optional, default: desktop)`),
+  };
+
+  const inventoryPageComponentsInputSchema = {
+    pageUrl: z
+      .string()
+      .optional()
+      .describe("Page URL to analyze (must be http or https)"),
+    components: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Component/block names to inventory. Omit to auto-discover all EDS blocks on the page."
+      ),
+    viewport: z
+      .enum(PAGE_COMPARE_VIEWPORTS)
+      .optional()
+      .describe(`Viewport preset: ${PAGE_COMPARE_VIEWPORTS.join(", ")} (optional, default: desktop)`),
+  };
+
+  registerAppTool(
+    server,
+    "inventoryPageComponents",
+    {
+      title: "Inventory Page Components (Step 1)",
+      description:
+        "Step 1: Analyze a page and build a component inventory with selectors, bounding boxes, and confidence scores. Writes inventory.json and overview.png to PROJECT_ROOT/<inventory-id>/. Call captureComponentScreenshots (Step 2) to screenshot from the inventory.",
+      inputSchema: inventoryPageComponentsInputSchema,
+      _meta: { ui: {} },
+    },
+    async (params): Promise<CallToolResult> => {
+      type Args = {
+        pageUrl?: string;
+        components?: string[];
+        viewport?: string;
+      };
+      const raw = params as Args | { arguments?: Args };
+      const args: Args =
+        typeof raw === "object" && raw !== null && "pageUrl" in raw
+          ? (raw as Args)
+          : ("arguments" in raw ? (raw as { arguments?: Args }).arguments ?? {} : {});
+
+      const pageUrl = typeof args.pageUrl === "string" ? args.pageUrl.trim() : "";
+      if (!pageUrl) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                action: "request_parameters",
+                missingParameters: ["pageUrl"],
+                message: "pageUrl is required to inventory page components.",
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      let viewport: PageCompareViewport = "desktop";
+      if (args.viewport) {
+        const v = String(args.viewport).toLowerCase();
+        if (!PAGE_COMPARE_VIEWPORTS.includes(v as PageCompareViewport)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: false,
+                  error: `viewport must be one of: ${PAGE_COMPARE_VIEWPORTS.join(", ")}`,
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        viewport = v as PageCompareViewport;
+      }
+
+      const components = Array.isArray(args.components)
+        ? args.components.filter((c) => typeof c === "string" && c.trim())
+        : undefined;
+
+      try {
+        const data = await inventoryPageComponents({ pageUrl, components, viewport });
+        const inventoryUrl = getReportArtifactUrl(
+          data.inventoryId,
+          data.reportDir,
+          "inventory.json"
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                summary: data.summary,
+                inventoryId: data.inventoryId,
+                inventoryUrl,
+                reportDir: data.reportDir,
+                reportBasePath: data.reportBasePath,
+                projectRoot: data.projectRoot,
+                pageUrl: data.pageUrl,
+                discoveryMode: data.discoveryMode,
+                viewport: data.viewport,
+                viewportName: data.viewportName,
+                components: data.components,
+                nextStep:
+                  "Review inventory.json, then call captureComponentScreenshots with inventoryId. Call validateComponentWorkflow with inventoryId to check completeness.",
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const needsBrowser =
+          /executable doesn't exist|browser.*not found|Failed to launch/i.test(message);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: "Component inventory failed",
+                details: message,
+                hint: needsBrowser
+                  ? "Install Playwright Chromium: npm run playwright:install"
+                  : "Check that the page URL is reachable.",
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  const defaultComponentInventoryCsvPath = path.join(
+    COMPONENT_INVENTORY_TEMPLATES_DIR,
+    COMPONENT_INVENTORY_CSV_FILENAME
+  );
+
+  const getComponentInventoryCsvTemplateInputSchema = {
+    outputPath: z
+      .string()
+      .optional()
+      .describe(
+        `Optional path for the template CSV. Default: PROJECT_ROOT/${defaultComponentInventoryCsvPath}`
+      ),
+    overwrite: z
+      .boolean()
+      .optional()
+      .describe("Overwrite an existing template file (default: false)"),
+  };
+
+  const importComponentInventoryFromCsvInputSchema = {
+    csvPath: z
+      .string()
+      .optional()
+      .describe(
+        `Path to filled CSV. Default: PROJECT_ROOT/${defaultComponentInventoryCsvPath}`
+      ),
+    csvContent: z
+      .string()
+      .optional()
+      .describe("Filled CSV content (pageUrl|componentName|selector). Use when not writing a file."),
+    viewport: z
+      .enum(PAGE_COMPARE_VIEWPORTS)
+      .optional()
+      .describe(`Viewport preset: ${PAGE_COMPARE_VIEWPORTS.join(", ")} (optional, default: desktop)`),
+  };
+
+  registerAppTool(
+    server,
+    "getComponentInventoryCsvTemplate",
+    {
+      title: "Get Component Inventory CSV Template",
+      description:
+        `Copy bundled CSV template to PROJECT_ROOT/${defaultComponentInventoryCsvPath}. Template is also exposed as MCP resource ${COMPONENT_INVENTORY_TEMPLATE_RESOURCE_URI}.`,
+      inputSchema: getComponentInventoryCsvTemplateInputSchema,
+      _meta: { ui: {} },
+    },
+    async (params): Promise<CallToolResult> => {
+      type Args = { outputPath?: string; overwrite?: boolean };
+      const raw = params as Args | { arguments?: Args };
+      const args: Args =
+        typeof raw === "object" && raw !== null
+          ? ("arguments" in raw ? (raw as { arguments?: Args }).arguments ?? (raw as Args) : (raw as Args))
+          : {};
+
+      try {
+        const { templatePath, content, resourceUri } = await writeComponentInventoryCsvTemplate({
+          outputPath: args.outputPath,
+          overwrite: args.overwrite === true,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                templatePath,
+                resourceUri,
+                projectRoot: PROJECT_ROOT,
+                columns: ["pageUrl", "componentName", "selector"],
+                delimiter: "|",
+                content,
+                nextStep:
+                  `Read resource ${resourceUri}, fill rows, copy to ${defaultComponentInventoryCsvPath}, then call importComponentInventoryFromCsv.`,
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: "Failed to write component inventory CSV template",
+                details: message,
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  registerAppTool(
+    server,
+    "importComponentInventoryFromCsv",
+    {
+      title: "Import Component Inventory from CSV",
+      description:
+        "Import a filled CSV (pageUrl|componentName|selector), validate selectors on each page, and write inventory.json. Then call captureComponentScreenshots with the returned inventoryId.",
+      inputSchema: importComponentInventoryFromCsvInputSchema,
+      _meta: { ui: {} },
+    },
+    async (params): Promise<CallToolResult> => {
+      type Args = {
+        csvPath?: string;
+        csvContent?: string;
+        viewport?: string;
+      };
+      const raw = params as Args | { arguments?: Args };
+      const args: Args =
+        typeof raw === "object" && raw !== null
+          ? ("arguments" in raw ? (raw as { arguments?: Args }).arguments ?? (raw as Args) : (raw as Args))
+          : {};
+
+      const csvPath = typeof args.csvPath === "string" ? args.csvPath.trim() : "";
+      const csvContent = typeof args.csvContent === "string" ? args.csvContent : "";
+
+      let viewport: PageCompareViewport = "desktop";
+      if (args.viewport) {
+        const v = String(args.viewport).toLowerCase();
+        if (!PAGE_COMPARE_VIEWPORTS.includes(v as PageCompareViewport)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: false,
+                  error: `viewport must be one of: ${PAGE_COMPARE_VIEWPORTS.join(", ")}`,
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        viewport = v as PageCompareViewport;
+      }
+
+      try {
+        const data = await importComponentInventoryFromCsv({
+          csvPath: csvPath || undefined,
+          csvContent: csvContent.trim() || undefined,
+          viewport,
+        });
+        const inventoryUrl = getReportArtifactUrl(
+          data.inventoryId,
+          data.reportDir,
+          "inventory.json"
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                summary: data.summary,
+                inventoryId: data.inventoryId,
+                inventoryUrl,
+                reportDir: data.reportDir,
+                projectRoot: data.projectRoot,
+                pageUrl: data.pageUrl,
+                discoveryMode: data.discoveryMode,
+                viewport: data.viewport,
+                viewportName: data.viewportName,
+                components: data.components,
+                nextStep:
+                  "Call captureComponentScreenshots with inventoryId, then validateComponentWorkflow with inventoryId and captureReportId.",
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const needsBrowser =
+          /executable doesn't exist|browser.*not found|Failed to launch/i.test(message);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: "CSV inventory import failed",
+                details: message,
+                hint: needsBrowser
+                  ? "Install Playwright Chromium: npm run playwright:install"
+                  : "Check CSV format and selectors.",
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  registerAppTool(
+    server,
+    "captureComponentScreenshots",
+    {
+      title: "Capture Component Screenshots (Step 2)",
+      description:
+        "Step 2: Capture component screenshots from inventory. Large inventories are captured in batches (default 4 per call) — use batchIndex and captureReportId from the prior response until hasMoreBatches is false.",
+      inputSchema: captureComponentScreenshotsInputSchema,
+      _meta: { ui: {} },
+    },
+    async (params): Promise<CallToolResult> => {
+      type Args = {
+        inventoryId?: string;
+        componentIds?: string[];
+        captureReportId?: string;
+        batchIndex?: number;
+        batchSize?: number;
+        pageUrl?: string;
+        components?: string[];
+        viewport?: string;
+      };
+      const raw = params as Args | { arguments?: Args };
+      const args: Args =
+        typeof raw === "object" &&
+        raw !== null &&
+        ("inventoryId" in raw || "pageUrl" in raw || "componentIds" in raw)
+          ? (raw as Args)
+          : ("arguments" in raw ? (raw as { arguments?: Args }).arguments ?? {} : {});
+
+      const inventoryId =
+        typeof args.inventoryId === "string" ? args.inventoryId.trim() : "";
+      const pageUrl = typeof args.pageUrl === "string" ? args.pageUrl.trim() : "";
+
+      if (!inventoryId && !pageUrl) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                action: "request_parameters",
+                missingParameters: ["inventoryId"],
+                message:
+                  "inventoryId (from inventoryPageComponents) is required, or pass pageUrl for legacy one-step capture.",
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      if (!inventoryId && pageUrl) {
+        try {
+          new URL(pageUrl);
+        } catch {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: false,
+                  error: "pageUrl must be a valid http or https URL",
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+      }
+
+      let viewport: PageCompareViewport = "desktop";
+      if (args.viewport) {
+        const v = String(args.viewport).toLowerCase();
+        if (!PAGE_COMPARE_VIEWPORTS.includes(v as PageCompareViewport)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: false,
+                  error: `viewport must be one of: ${PAGE_COMPARE_VIEWPORTS.join(", ")}`,
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        viewport = v as PageCompareViewport;
+      }
+
+      const components = Array.isArray(args.components)
+        ? args.components.filter((c) => typeof c === "string" && c.trim())
+        : undefined;
+      const componentIds = Array.isArray(args.componentIds)
+        ? args.componentIds.filter((c) => typeof c === "string" && c.trim())
+        : undefined;
+
+      const batchIndex =
+        typeof args.batchIndex === "number" && Number.isFinite(args.batchIndex)
+          ? Math.max(0, Math.floor(args.batchIndex))
+          : undefined;
+      const batchSize =
+        typeof args.batchSize === "number" && Number.isFinite(args.batchSize)
+          ? Math.max(1, Math.floor(args.batchSize))
+          : undefined;
+      const captureReportId =
+        typeof args.captureReportId === "string" ? args.captureReportId.trim() : undefined;
+
+      try {
+        const data = await captureComponentScreenshots({
+          inventoryId: inventoryId || undefined,
+          componentIds,
+          captureReportId: captureReportId || undefined,
+          batchIndex,
+          batchSize,
+          pageUrl: pageUrl || undefined,
+          components,
+          viewport,
+        });
+
+        const reportUrl = getPageComparisonReportUrl(data.reportId, data.reportDir);
+
+        const nextStep = data.hasMoreBatches
+          ? `Call captureComponentScreenshots with inventoryId "${data.inventoryId}", captureReportId "${data.reportId}", batchIndex ${(data.batchIndex ?? 0) + 1}, batchSize ${data.batchSize ?? 4}. Remaining: ${data.remainingComponentIds?.join(", ")}`
+          : "Call validateComponentWorkflow with inventoryId and captureReportId to verify captures.";
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                summary: data.summary,
+                reportId: data.reportId,
+                inventoryId: data.inventoryId,
+                reportUrl,
+                reportDir: data.reportDir,
+                reportBasePath: data.reportBasePath,
+                projectRoot: data.projectRoot,
+                pageUrl: data.pageUrl,
+                viewport: data.viewport,
+                viewportName: data.viewportName,
+                components: data.components,
+                batchedCapture: data.batchedCapture,
+                batchIndex: data.batchIndex,
+                totalBatches: data.totalBatches,
+                batchSize: data.batchSize,
+                hasMoreBatches: data.hasMoreBatches,
+                remainingComponentIds: data.remainingComponentIds,
+                nextStep,
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const needsBrowser =
+          /executable doesn't exist|browser.*not found|Failed to launch/i.test(message);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: "Component screenshot capture failed",
+                details: message,
+                hint: needsBrowser
+                  ? "Install Playwright Chromium: npm run playwright:install"
+                  : "Check that the page URL is reachable.",
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  const validateComponentWorkflowInputSchema = {
+    inventoryId: z
+      .string()
+      .min(1)
+      .describe("Inventory folder id from Step 1 (e.g. component-inventory-<timestamp>)"),
+    captureReportId: z
+      .string()
+      .optional()
+      .describe("Capture folder id from Step 2 (e.g. component-capture-<timestamp>)"),
+    writeReport: z
+      .boolean()
+      .optional()
+      .describe("Write validation-report.json under inventory/capture dirs (default: true)"),
+  };
+
+  registerAppTool(
+    server,
+    "validateComponentWorkflow",
+    {
+      title: "Validate Component Workflow",
+      description:
+        "Feedback loop: validate inventory completeness (selectors, visibility, bounding boxes) and optionally capture outputs (PNG files, coverage vs inventory). Writes validation-report.json with issues and next steps.",
+      inputSchema: validateComponentWorkflowInputSchema,
+      _meta: { ui: {} },
+    },
+    async (params): Promise<CallToolResult> => {
+      type Args = {
+        inventoryId?: string;
+        captureReportId?: string;
+        writeReport?: boolean;
+      };
+      const raw = params as Args | { arguments?: Args };
+      const args: Args =
+        typeof raw === "object" && raw !== null && "inventoryId" in raw
+          ? (raw as Args)
+          : ("arguments" in raw ? (raw as { arguments?: Args }).arguments ?? {} : {});
+
+      const inventoryId =
+        typeof args.inventoryId === "string" ? args.inventoryId.trim() : "";
+      if (!inventoryId) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                action: "request_parameters",
+                missingParameters: ["inventoryId"],
+                message: "inventoryId is required.",
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      try {
+        const data = await validateComponentWorkflow({
+          inventoryId,
+          captureReportId:
+            typeof args.captureReportId === "string" ? args.captureReportId.trim() : undefined,
+          writeReport: args.writeReport !== false,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                complete: data.complete,
+                inventoryId: data.inventoryId,
+                captureReportId: data.captureReportId,
+                validationReportPath: data.validationReportPath,
+                inventory: data.inventory,
+                capture: data.capture,
+                nextSteps: data.nextSteps,
+              }),
+            },
+          ],
+          isError: !data.complete,
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                error: "Component workflow validation failed",
+                details: message,
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -1154,6 +1854,310 @@ export function createServer(): McpServer {
 3. When comparison completes, summarize pass/fail, diff pixel ratio, and summary from the tool result.
 4. Call openPageComparisonReport to open the interactive report (source, destination, diff images).
 5. If the comparison failed, suggest likely correction areas based on the diff — do not invent metrics not present in the tool output.`,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerPrompt(
+    "component-inventory-from-csv",
+    {
+      title: "Component Inventory from CSV",
+      description:
+        "Recommended for production or custom pages: get CSV template, agent fills pageUrl|componentName|selector, import inventory, then capture screenshots.",
+      argsSchema: {
+        csvPath: z.string().optional().describe("Path to filled CSV"),
+        viewport: z
+          .enum(COMPONENT_VIEWPORTS)
+          .optional()
+          .describe(`Viewport: ${COMPONENT_VIEWPORTS.join(", ")}`),
+      },
+    },
+    async (args) => {
+      const csvPath =
+        typeof args.csvPath === "string" && args.csvPath.trim()
+          ? args.csvPath.trim()
+          : path.join(COMPONENT_INVENTORY_TEMPLATES_DIR, COMPONENT_INVENTORY_CSV_FILENAME);
+      const viewport = args.viewport ?? "desktop";
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Build a component inventory from CSV and capture screenshots.
+
+1. Call getComponentInventoryCsvTemplate — writes PROJECT_ROOT/${csvPath}.
+2. Or read MCP resource ${COMPONENT_INVENTORY_TEMPLATE_RESOURCE_URI} for the bundled template.
+3. Open the target page(s), inspect the DOM, and fill one row per component with a stable CSS selector.
+4. Call importComponentInventoryFromCsv${viewport !== "desktop" ? ` with viewport "${viewport}"` : ""} — no csvPath needed when using the default project copy.
+5. Review imported components (visible vs missing selectors).
+6. Call validateComponentWorkflow with inventoryId — fix any errors (update CSV, re-import).
+7. Call captureComponentScreenshots with the returned inventoryId.
+8. Call validateComponentWorkflow with inventoryId and captureReportId — re-capture if captures failed.
+
+CSV example:
+pageUrl|componentName|selector
+https://www.example.com/page|hero|.container_hero-home
+https://www.example.com/page|footer|footer.site-footer`,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerPrompt(
+    "inventory-page-components",
+    {
+      title: "Inventory Page Components",
+      description:
+        "Step 1: Analyze a page and build a component inventory. Review inventory.json, then capture screenshots with capture-component-screenshots.",
+      argsSchema: {
+        pageUrl: z.string().optional().describe("Page URL (http or https)"),
+        components: z
+          .array(z.string())
+          .optional()
+          .describe("Component names to inventory. Omit to auto-discover all EDS blocks."),
+        viewport: z
+          .enum(COMPONENT_VIEWPORTS)
+          .optional()
+          .describe(`Viewport: ${COMPONENT_VIEWPORTS.join(", ")}`),
+      },
+    },
+    async (args) => {
+      const pageUrl = typeof args.pageUrl === "string" ? args.pageUrl.trim() : "";
+      if (!pageUrl) {
+        return {
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: `Inventory components on a page (Step 1 of 2).
+
+**Required:**
+- **pageUrl** — full page URL (http or https)
+
+**Optional:**
+- **components** — block names (e.g. hero, cards). Omit to auto-discover all EDS blocks.
+- **viewport** — mobile, tablet, desktop (default), or large
+
+Reply with pageUrl and optional components/viewport. I will call inventoryPageComponents and show the inventory for review before capturing screenshots.`,
+              },
+            },
+          ],
+        };
+      }
+
+      const components =
+        Array.isArray(args.components) && args.components.length > 0
+          ? args.components
+          : undefined;
+      const viewport = args.viewport ?? "desktop";
+      const componentsLine = components
+        ? `components: ${components.join(", ")}`
+        : "components: (auto-discover all blocks)";
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Inventory page components:
+- pageUrl: ${pageUrl}
+- ${componentsLine}
+- viewport: ${viewport}
+
+1. Call inventoryPageComponents with pageUrl "${pageUrl}"${components ? `, components ${JSON.stringify(components)}` : ""}${viewport !== "desktop" ? `, viewport "${viewport}"` : ""}.
+2. Call validateComponentWorkflow with the returned inventoryId; fix issues before capture.
+3. Present the inventory summary (component ids, names, confidence, visibility) from the tool result.
+4. Ask the user to confirm or select componentIds to capture.
+5. Call captureComponentScreenshots with inventoryId from Step 1 (and optional componentIds filter).
+6. Call validateComponentWorkflow with inventoryId and captureReportId; re-capture if incomplete.`,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerPrompt(
+    "capture-component-screenshots",
+    {
+      title: "Capture Component Screenshots",
+      description:
+        "Capture component screenshots. Recommended: run inventory-page-components first, then pass inventoryId. Legacy: pass pageUrl for one-step inventory + capture.",
+      argsSchema: {
+        inventoryId: z
+          .string()
+          .optional()
+          .describe("Inventory ID from inventoryPageComponents (recommended)"),
+        componentIds: z
+          .array(z.string())
+          .optional()
+          .describe("Subset of inventory component ids to capture"),
+        pageUrl: z.string().optional().describe("Page URL for legacy one-step mode"),
+        components: z
+          .array(z.string())
+          .optional()
+          .describe("Component names (legacy one-step mode only)"),
+        viewport: z
+          .enum(COMPONENT_VIEWPORTS)
+          .optional()
+          .describe(`Viewport: ${COMPONENT_VIEWPORTS.join(", ")}`),
+      },
+    },
+    async (args) => {
+      const inventoryId =
+        typeof args.inventoryId === "string" ? args.inventoryId.trim() : "";
+      const pageUrl = typeof args.pageUrl === "string" ? args.pageUrl.trim() : "";
+
+      if (!inventoryId && !pageUrl) {
+        return {
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: `Capture component screenshots (Step 2).
+
+**Recommended:** pass **inventoryId** from a prior inventoryPageComponents run.
+
+**Legacy one-step:** pass **pageUrl** (and optional components) to inventory + capture together.
+
+**Optional:**
+- **componentIds** — subset of ids to capture (e.g. hero-0, cards-1)
+- **viewport** — mobile, tablet, desktop (default), or large
+
+If you have not run inventory yet, use the inventory-page-components prompt first.`,
+              },
+            },
+          ],
+        };
+      }
+
+      const componentIds =
+        Array.isArray(args.componentIds) && args.componentIds.length > 0
+          ? args.componentIds
+          : undefined;
+      const components =
+        Array.isArray(args.components) && args.components.length > 0
+          ? args.components
+          : undefined;
+      const viewport = args.viewport ?? "desktop";
+
+      if (inventoryId) {
+        const idsLine = componentIds
+          ? `componentIds: ${componentIds.join(", ")}`
+          : "componentIds: (all from inventory)";
+        return {
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: `Capture component screenshots from inventory:
+- inventoryId: ${inventoryId}
+- ${idsLine}
+- viewport: ${viewport}
+
+1. Call captureComponentScreenshots with inventoryId "${inventoryId}"${componentIds ? `, componentIds ${JSON.stringify(componentIds)}` : ""}${viewport !== "desktop" ? `, viewport "${viewport}"` : ""} (batchIndex 0, default batchSize 4).
+2. While hasMoreBatches is true, repeat with the same captureReportId and increment batchIndex (e.g. 0, 1, 2, 3 for 13 components).
+3. Call validateComponentWorkflow with inventoryId and final captureReportId.
+4. Report paths: PROJECT_ROOT/component-capture-<timestamp>/ (manifest.json + PNG per component).`,
+              },
+            },
+          ],
+        };
+      }
+
+      const componentsLine = components
+        ? `components: ${components.join(", ")}`
+        : "components: (auto-discover all blocks)";
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Capture component screenshots (legacy one-step):
+- pageUrl: ${pageUrl}
+- ${componentsLine}
+- viewport: ${viewport}
+
+1. Call captureComponentScreenshots with pageUrl "${pageUrl}"${components ? `, components ${JSON.stringify(components)}` : ""}${viewport !== "desktop" ? `, viewport "${viewport}"` : ""}.
+2. Summarize captured vs skipped components from the tool result.
+3. Report paths are under PROJECT_ROOT/component-capture-<timestamp>/ (manifest.json + PNG per component).`,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerPrompt(
+    "validate-component-workflow",
+    {
+      title: "Validate Component Workflow",
+      description:
+        "Feedback loop: validate inventory completeness and capture outputs before trusting PNGs.",
+      argsSchema: {
+        inventoryId: z.string().optional().describe("Inventory id from Step 1"),
+        captureReportId: z
+          .string()
+          .optional()
+          .describe("Capture report id from Step 2 (component-capture-<timestamp>)"),
+      },
+    },
+    async (args) => {
+      const inventoryId =
+        typeof args.inventoryId === "string" ? args.inventoryId.trim() : "";
+      const captureReportId =
+        typeof args.captureReportId === "string" ? args.captureReportId.trim() : "";
+
+      if (!inventoryId) {
+        return {
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: `Validate component inventory and captures.
+
+**Required:** inventoryId (e.g. component-inventory-<timestamp> from Step 1)
+**Optional:** captureReportId (e.g. component-capture-<timestamp> from Step 2)
+
+Reply with both ids when available. I will call validateComponentWorkflow and act on issues/nextSteps.`,
+              },
+            },
+          ],
+        };
+      }
+
+      const captureLine = captureReportId
+        ? `captureReportId: ${captureReportId}`
+        : "captureReportId: (inventory only — run capture first for full validation)";
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Validate component workflow:
+- inventoryId: ${inventoryId}
+- ${captureLine}
+
+1. Call validateComponentWorkflow with inventoryId "${inventoryId}"${captureReportId ? `, captureReportId "${captureReportId}"` : ""}.
+2. If complete is false, follow nextSteps: fix CSV/selectors, re-import inventory, or re-run captureComponentScreenshots (creates a new capture folder).
+3. Read validation-report.json in the inventory folder for the full issue list.
+4. Only proceed to visual comparison when complete is true.`,
             },
           },
         ],

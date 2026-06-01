@@ -4,7 +4,7 @@
   "type": "module",
   "main": "server.ts",
   "scripts": {
-    "build": "tsc --noEmit && cross-env INPUT=pixel-guard.html vite build && tsc -p tsconfig.server.json",
+    "build": "tsc --noEmit && cross-env INPUT=pixel-guard.html vite build && tsc -p tsconfig.server.json && node --input-type=module -e \"import fs from 'node:fs'; fs.mkdirSync('output/templates',{recursive:true}); fs.copyFileSync('templates/component-inventory-template.csv','output/templates/component-inventory-template.csv');\"",
     "watch": "cross-env INPUT=pixel-guard.html vite build --watch",
     "serve": "tsx main.ts --http",
     "start": "cross-env NODE_ENV=development npm run build && npm run serve",
@@ -20,8 +20,11 @@
   "description": "Pixel Guard - UI Visual Validator MCP App",
   "files": [
     "output/",
+    "templates/",
     "src/",
     "compare-pages.ts",
+    "component-workflow.ts",
+    "component-devtools.ts",
     "main.ts",
     "paths.ts",
     "server.ts",

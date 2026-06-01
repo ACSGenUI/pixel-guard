@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "declaration": true,
@@ -12,5 +12,12 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["server.ts", "main.ts", "compare-pages.ts", "paths.ts"]
+  "include": [
+    "server.ts",
+    "main.ts",
+    "compare-pages.ts",
+    "component-devtools.ts",
+    "component-workflow.ts",
+    "paths.ts"
+  ]
 }
