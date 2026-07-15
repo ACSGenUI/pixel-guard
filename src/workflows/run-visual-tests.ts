@@ -10,6 +10,20 @@ import { getReportUrl, withReportUrl } from './report-server.js';
 
 const execFileAsync = promisify(execFile);
 
+const MAX_ERROR_OUTPUT_LENGTH = 8000;
+
+// execFile's rejection carries the raw stdout/stderr from the failed command (Playwright's
+// actual test-failure details -- assertion diffs, stack traces) beyond the generic
+// "Command failed" message, which is what an agent needs to actually diagnose a failure.
+function extractErrorOutput(error: unknown): string | null {
+  const { stdout, stderr } = error as { stdout?: string; stderr?: string };
+  const combined = [stdout, stderr].filter((part): part is string => Boolean(part && part.trim())).join('\n');
+  if (!combined) {
+    return null;
+  }
+  return combined.length > MAX_ERROR_OUTPUT_LENGTH ? combined.slice(-MAX_ERROR_OUTPUT_LENGTH) : combined;
+}
+
 // Bridges the workflow's { blockName?, projectDir? } input to checkPrerequisitesStep's
 // narrower inputSchema. Both fields are read downstream via getInitData(), not through
 // this pass-through.
@@ -55,6 +69,7 @@ export const runVisualTestsStep = createStep({
     visualTestsRan: z.boolean(),
     message: z.string(),
     reportUrl: z.string().nullable(),
+    errorOutput: z.string().nullable(),
   }),
   execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
@@ -65,6 +80,7 @@ export const runVisualTestsStep = createStep({
         visualTestsRan: false,
         message: 'Skipped running visual tests because prerequisites were not met.',
         reportUrl: null,
+        errorOutput: null,
       };
     }
 
@@ -75,13 +91,19 @@ export const runVisualTestsStep = createStep({
       try {
         await execFileAsync('npm', ['run', 'test:visual'], { cwd: targetDir });
         const reportUrl = await getReportUrl(targetDir);
-        return { visualTestsRan: true, message: withReportUrl('Ran all visual tests.', reportUrl), reportUrl };
+        return {
+          visualTestsRan: true,
+          message: withReportUrl('Ran all visual tests.', reportUrl),
+          reportUrl,
+          errorOutput: null,
+        };
       } catch (error) {
         const reportUrl = await getReportUrl(targetDir);
         return {
           visualTestsRan: false,
           message: withReportUrl(`Visual tests failed: ${(error as Error).message}`, reportUrl),
           reportUrl,
+          errorOutput: extractErrorOutput(error),
         };
       }
     }
@@ -95,6 +117,7 @@ export const runVisualTestsStep = createStep({
           ? `No visual test found for block "${blockName}" (expected ${specPath}). Available blocks: ${available.join(', ')}.`
           : `No visual test found for block "${blockName}" (expected ${specPath}). No block tests have been generated yet -- run generate-visual-tests first.`,
         reportUrl: null,
+        errorOutput: null,
       };
     }
 
@@ -105,12 +128,14 @@ export const runVisualTestsStep = createStep({
         visualTestsRan: true,
         message: withReportUrl(`Ran visual tests for block "${blockName}".`, reportUrl),
         reportUrl,
+        errorOutput: null,
       };
     } catch (error) {
       const reportUrl = await getReportUrl(targetDir);
       return {
         visualTestsRan: false,
         message: withReportUrl(`Visual tests for block "${blockName}" failed: ${(error as Error).message}`, reportUrl),
+        errorOutput: extractErrorOutput(error),
         reportUrl,
       };
     }
@@ -148,6 +173,7 @@ export const runVisualTestsWorkflow = createWorkflow({
     visualTestsRan: z.boolean(),
     visualTestsRanMessage: z.string(),
     reportUrl: z.string().nullable(),
+    errorOutput: z.string().nullable(),
     devServerStopped: z.boolean(),
     devServerStoppedMessage: z.string(),
   }),
@@ -168,6 +194,7 @@ export const runVisualTestsWorkflow = createWorkflow({
     visualTestsRan: { step: runVisualTestsStep, path: 'visualTestsRan' },
     visualTestsRanMessage: { step: runVisualTestsStep, path: 'message' },
     reportUrl: { step: runVisualTestsStep, path: 'reportUrl' },
+    errorOutput: { step: runVisualTestsStep, path: 'errorOutput' },
     devServerStopped: { step: stopDevServerAfterRunStep, path: 'devServerStopped' },
     devServerStoppedMessage: { step: stopDevServerAfterRunStep, path: 'message' },
   })

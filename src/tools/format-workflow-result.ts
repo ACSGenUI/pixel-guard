@@ -15,3 +15,7 @@ export function formatWorkflowResult(title: string, steps: WorkflowStepSummary[]
     ...lines,
   ].join('\n');
 }
+
+export function appendErrorOutput(summary: string, errorOutput: string | null): string {
+  return errorOutput ? `${summary}\n\n### Error output\n\n\`\`\`\n${errorOutput}\n\`\`\`` : summary;
+}
