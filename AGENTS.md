@@ -31,6 +31,12 @@ Only pass `projectDir` explicitly when calling from a host that doesn't set `CLA
 
 Installs/scaffolds the AEM Visual Test environment in the target project: checks prerequisites, copies required files, updates project config, installs dependencies, and generates visual tests.
 
+If (and only if) that all succeeds and the connected client supports MCP elicitation, it then asks (one combined prompt, two checkboxes) whether to also set up:
+- a **GitHub Actions workflow** (`.github/workflows/visual-tests.yaml`) that runs the visual tests on pull requests and posts results as a PR comment, and/or
+- a **Husky pre-commit hook** (`.husky/pre-commit`) that runs the visual tests before each commit (adds a `"prepare": "husky install"` script to `package.json` — run `npm install` afterward to activate it).
+
+Both are opt-in and independent; declining (or a client with no elicitation support) skips them silently, no error.
+
 **Input:** `projectDir?` (string)
 
 **Example prompts:**

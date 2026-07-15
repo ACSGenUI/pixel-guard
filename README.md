@@ -54,7 +54,7 @@ Opens Studio at `http://localhost:4111`. Go to **MCP Servers → pixelGuard → 
 
 | Tool | What it does | Example prompt |
 |---|---|---|
-| `aemVisualTestInstall` | Installs/scaffolds the visual-test environment in the target project | "Set up visual regression testing for this AEM project." |
+| `aemVisualTestInstall` | Installs/scaffolds the visual-test environment in the target project. If that succeeds, asks whether to also set up a GitHub Actions workflow (runs visual tests on PRs) and/or a Husky pre-commit hook (runs them before each commit) | "Set up visual regression testing for this AEM project." |
 | `generateVisualTests` | Regenerates Playwright specs from the Sidekick Library's current blocks | "I added a new block variation, regenerate the visual tests." |
 | `runVisualTests` | Runs the visual tests (all, or a single block) and lists every block/viewport test that passed or failed. `mode` controls what happens beyond that on failure: `quick` (default) just the pass/fail breakdown, `diagnose` adds each failure's error message and diff-image file path, `interactive` asks before showing diagnostics and before attempting a fix | "Run the visual tests and fix any issues." |
 | `updateVisualSnapshots` | Updates the baseline screenshots (all, or a single block) | "Update the visual snapshots, the Columns redesign is intentional." |

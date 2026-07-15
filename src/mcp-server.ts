@@ -12,7 +12,7 @@ import { updateVisualSnapshotsTool } from './tools/update-visual-snapshots-tool.
 const INSTRUCTIONS = `pixel-guard installs and drives a Playwright-based visual regression test suite for AEM Edge Delivery Services (EDS) projects. It renders every block variation from the target project's Sidekick Library at multiple viewports, screenshots them, and compares against committed baselines to catch unintended visual changes.
 
 Typical order of operations:
-1. aemVisualTestInstall -- once, to set up the environment in the target project.
+1. aemVisualTestInstall -- once, to set up the environment in the target project. If it succeeds and the client supports MCP elicitation, it also asks whether to set up a GitHub Actions workflow and/or a Husky pre-commit hook to run the visual tests automatically.
 2. generateVisualTests -- whenever blocks/variations are added or changed in the Sidekick Library.
 3. runVisualTests -- to check for regressions. The response lists every block/viewport test's pass/fail, not just an aggregate result. Use the "mode" input to control what happens beyond that on failure: "quick" (default) is just the pass/fail breakdown, "diagnose" also includes each failure's error message and its Playwright screenshot-diff image file path (read that path with your own file-reading tool if you need to look at it -- it is not embedded in the response), "interactive" asks before showing diagnostics and before attempting a fix.
 4. updateVisualSnapshots -- only when a visual change is intentional, to accept it as the new baseline.
