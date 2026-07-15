@@ -6,7 +6,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test 'src/**/*.test.ts'"
+    "test": "tsx --test 'src/**/*.test.ts'",
+    "studio": "mastra dev"
   },
   "repository": {
     "type": "git",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "mastra": "^1.19.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

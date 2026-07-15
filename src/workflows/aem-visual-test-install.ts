@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { mergePackageJson, appendMissingLines, addLoadScriptImport, addSidekickLibraryLoader } from './update-project-config.js';
 import { scripts, dependenciesToAdd, devDependenciesToAdd, gitignoreLines, hlxignoreLines } from '../../aem-visual-checker/changes.js';
 import { startDevServer, stopDevServer } from './dev-server.js';
+import { resolveProjectDir } from './project-dir.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -67,7 +68,9 @@ export async function copyRequiredFiles(sourceDir: string, targetDir: string): P
 export const checkPrerequisitesStep = createStep({
   id: 'check-prerequisites',
   description: 'Checks that Docker is installed on the system.',
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    projectDir: z.string().optional().describe('Absolute path to the target AEM project. Defaults to CLAUDE_PROJECT_DIR or the server process\'s working directory when omitted.'),
+  }),
   outputSchema: z.object({
     dockerInstalled: z.boolean(),
     message: z.string(),
@@ -90,8 +93,9 @@ export const checkProjectStructureStep = createStep({
     projectStructureValid: z.boolean(),
     message: z.string(),
   }),
-  execute: async () => {
-    const missing = await findMissingProjectPaths(process.cwd());
+  execute: async ({ getInitData }) => {
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
+    const missing = await findMissingProjectPaths(targetDir);
     if (missing.length === 0) {
       return { projectStructureValid: true, message: 'Project structure is valid.' };
     }
@@ -110,7 +114,7 @@ export const copyRequiredFilesStep = createStep({
     filesCopied: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     if (!dockerInstalled || !projectStructureValid) {
@@ -119,7 +123,8 @@ export const copyRequiredFilesStep = createStep({
         message: 'Skipped copying required files because prerequisites were not met.',
       };
     }
-    await copyRequiredFiles(ASSETS_SOURCE_DIR, process.cwd());
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
+    await copyRequiredFiles(ASSETS_SOURCE_DIR, targetDir);
     return {
       filesCopied: true,
       message: 'Copied tools/, .dockerignore, and .env.example to the project.',
@@ -135,7 +140,7 @@ export const updateProjectConfigStep = createStep({
     configUpdated: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     const { filesCopied } = getStepResult(copyRequiredFilesStep);
@@ -145,14 +150,15 @@ export const updateProjectConfigStep = createStep({
         message: 'Skipped updating project config because prerequisites were not met.',
       };
     }
-    await mergePackageJson(process.cwd(), {
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
+    await mergePackageJson(targetDir, {
       scripts,
       dependencies: dependenciesToAdd,
       devDependencies: devDependenciesToAdd,
     });
-    await appendMissingLines(join(process.cwd(), '.gitignore'), gitignoreLines);
-    await appendMissingLines(join(process.cwd(), '.hlxignore'), hlxignoreLines);
-    const scriptsJsPath = join(process.cwd(), 'scripts', 'scripts.js');
+    await appendMissingLines(join(targetDir, '.gitignore'), gitignoreLines);
+    await appendMissingLines(join(targetDir, '.hlxignore'), hlxignoreLines);
+    const scriptsJsPath = join(targetDir, 'scripts', 'scripts.js');
     await addLoadScriptImport(scriptsJsPath);
     await addSidekickLibraryLoader(scriptsJsPath);
     return {
@@ -170,7 +176,7 @@ export const runNpmInstallStep = createStep({
     npmInstallSucceeded: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     const { filesCopied } = getStepResult(copyRequiredFilesStep);
@@ -181,8 +187,9 @@ export const runNpmInstallStep = createStep({
         message: 'Skipped running npm install because prerequisites were not met.',
       };
     }
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
     try {
-      await execFileAsync('npm', ['install'], { cwd: process.cwd() });
+      await execFileAsync('npm', ['install'], { cwd: targetDir });
       return { npmInstallSucceeded: true, message: 'Installed npm dependencies.' };
     } catch (error) {
       return {
@@ -201,7 +208,7 @@ export const startDevServerStep = createStep({
     devServerStarted: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     const { filesCopied } = getStepResult(copyRequiredFilesStep);
@@ -213,7 +220,8 @@ export const startDevServerStep = createStep({
         message: 'Skipped starting the dev server because prerequisites were not met.',
       };
     }
-    const { started, message } = await startDevServer(process.cwd());
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
+    const { started, message } = await startDevServer(targetDir);
     return { devServerStarted: started, message };
   },
 });
@@ -226,7 +234,7 @@ export const dockerBuildStep = createStep({
     dockerBuildSucceeded: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     const { filesCopied } = getStepResult(copyRequiredFilesStep);
@@ -246,8 +254,9 @@ export const dockerBuildStep = createStep({
         message: 'Skipped docker build because prerequisites were not met.',
       };
     }
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
     try {
-      await execFileAsync('npm', ['run', 'test:visual:build'], { cwd: process.cwd() });
+      await execFileAsync('npm', ['run', 'test:visual:build'], { cwd: targetDir });
       return { dockerBuildSucceeded: true, message: 'Built the Playwright Docker image.' };
     } catch (error) {
       return {
@@ -266,7 +275,7 @@ export const generateVisualTestsStep = createStep({
     visualTestsGenerated: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     const { filesCopied } = getStepResult(copyRequiredFilesStep);
@@ -288,8 +297,9 @@ export const generateVisualTestsStep = createStep({
         message: 'Skipped generating visual tests because prerequisites were not met.',
       };
     }
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
     try {
-      await execFileAsync('npm', ['run', 'test:visual:generate'], { cwd: process.cwd() });
+      await execFileAsync('npm', ['run', 'test:visual:generate'], { cwd: targetDir });
       return { visualTestsGenerated: true, message: 'Generated visual tests.' };
     } catch (error) {
       return {
@@ -317,7 +327,9 @@ export const stopDevServerStep = createStep({
 export const aemVisualTestInstallWorkflow = createWorkflow({
   id: 'aem-visual-test-install',
   description: 'Install or Scaffold the AEM Visual Test environment in the current project. Check for prerequisites and provide instructions if not met. copy and modify the necessary files to set up the environment.',
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    projectDir: z.string().optional().describe('Absolute path to the target AEM project. Defaults to CLAUDE_PROJECT_DIR or the server process\'s working directory when omitted.'),
+  }),
   outputSchema: z.object({
     dockerInstalled: z.boolean(),
     dockerMessage: z.string(),

@@ -1,34 +1,24 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { execFile } from 'node:child_process';
-import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { checkPrerequisitesStep, checkProjectStructureStep } from './aem-visual-test-install.js';
 import { blockSpecExists, listAvailableBlocks, resolveBlockSpecPath } from './block-spec.js';
 import { startDevServer, stopDevServer } from './dev-server.js';
-import { serveReport } from './report-server.js';
+import { resolveProjectDir } from './project-dir.js';
+import { getReportUrl, withReportUrl } from './report-server.js';
 
 const execFileAsync = promisify(execFile);
 
-// Playwright writes its HTML report here on every run, whether tests pass or fail;
-// serve it locally so the report is always reachable from the tool's response.
-async function getReportUrl(): Promise<string | null> {
-  const reportDir = join(process.cwd(), 'tools', 'visual-tests', 'playwright-report');
-  const report = await serveReport(reportDir);
-  return report?.url ?? null;
-}
-
-function withReportUrl(message: string, reportUrl: string | null): string {
-  return reportUrl ? `${message}\n\nPlaywright report: ${reportUrl}` : message;
-}
-
-// Bridges the workflow's { blockName? } input to checkPrerequisitesStep's empty inputSchema.
-// blockName itself is read downstream via getInitData(), not through this pass-through.
+// Bridges the workflow's { blockName?, projectDir? } input to checkPrerequisitesStep's
+// narrower inputSchema. Both fields are read downstream via getInitData(), not through
+// this pass-through.
 export const readWorkflowInputStep = createStep({
   id: 'read-workflow-input',
-  description: 'Reads the workflow input; blockName (if any) is picked up later via getInitData().',
+  description: 'Reads the workflow input; blockName and projectDir (if any) are picked up later via getInitData().',
   inputSchema: z.object({
     blockName: z.string().optional(),
+    projectDir: z.string().optional(),
   }),
   outputSchema: z.object({}),
   execute: async () => ({}),
@@ -42,7 +32,7 @@ export const startDevServerForRunStep = createStep({
     devServerStarted: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     if (!dockerInstalled || !projectStructureValid) {
@@ -51,7 +41,8 @@ export const startDevServerForRunStep = createStep({
         message: 'Skipped starting the dev server because prerequisites were not met.',
       };
     }
-    const { started, message } = await startDevServer(process.cwd());
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
+    const { started, message } = await startDevServer(targetDir);
     return { devServerStarted: started, message };
   },
 });
@@ -77,15 +68,16 @@ export const runVisualTestsStep = createStep({
       };
     }
 
-    const { blockName } = getInitData<{ blockName?: string }>();
+    const { blockName, projectDir } = getInitData<{ blockName?: string; projectDir?: string }>();
+    const targetDir = resolveProjectDir(projectDir);
 
     if (!blockName) {
       try {
-        await execFileAsync('npm', ['run', 'test:visual'], { cwd: process.cwd() });
-        const reportUrl = await getReportUrl();
+        await execFileAsync('npm', ['run', 'test:visual'], { cwd: targetDir });
+        const reportUrl = await getReportUrl(targetDir);
         return { visualTestsRan: true, message: withReportUrl('Ran all visual tests.', reportUrl), reportUrl };
       } catch (error) {
-        const reportUrl = await getReportUrl();
+        const reportUrl = await getReportUrl(targetDir);
         return {
           visualTestsRan: false,
           message: withReportUrl(`Visual tests failed: ${(error as Error).message}`, reportUrl),
@@ -95,8 +87,8 @@ export const runVisualTestsStep = createStep({
     }
 
     const specPath = resolveBlockSpecPath(blockName);
-    if (!(await blockSpecExists(process.cwd(), specPath))) {
-      const available = await listAvailableBlocks(process.cwd());
+    if (!(await blockSpecExists(targetDir, specPath))) {
+      const available = await listAvailableBlocks(targetDir);
       return {
         visualTestsRan: false,
         message: available.length > 0
@@ -107,15 +99,15 @@ export const runVisualTestsStep = createStep({
     }
 
     try {
-      await execFileAsync('npm', ['run', 'test:visual:block', '--', specPath], { cwd: process.cwd() });
-      const reportUrl = await getReportUrl();
+      await execFileAsync('npm', ['run', 'test:visual:block', '--', specPath], { cwd: targetDir });
+      const reportUrl = await getReportUrl(targetDir);
       return {
         visualTestsRan: true,
         message: withReportUrl(`Ran visual tests for block "${blockName}".`, reportUrl),
         reportUrl,
       };
     } catch (error) {
-      const reportUrl = await getReportUrl();
+      const reportUrl = await getReportUrl(targetDir);
       return {
         visualTestsRan: false,
         message: withReportUrl(`Visual tests for block "${blockName}" failed: ${(error as Error).message}`, reportUrl),
@@ -144,6 +136,7 @@ export const runVisualTestsWorkflow = createWorkflow({
   description: 'Runs the Playwright visual tests. With no blockName, runs the full suite (npm run test:visual). With a blockName, runs only that block\'s generated spec (npm run test:visual:block). Starts the AEM dev server first and stops it afterward. Assumes the visual-test environment (npm dependencies, Docker image, generated block specs) was already installed via aem-visual-test-install and generate-visual-tests.',
   inputSchema: z.object({
     blockName: z.string().optional().describe('Name of a single block to run visual tests for (e.g. "Columns"). Omit to run the full visual test suite.'),
+    projectDir: z.string().optional().describe('Absolute path to the target AEM project. Defaults to CLAUDE_PROJECT_DIR or the server process\'s working directory when omitted.'),
   }),
   outputSchema: z.object({
     dockerInstalled: z.boolean(),

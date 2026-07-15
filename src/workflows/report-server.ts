@@ -20,9 +20,42 @@ const MIME_TYPES: Record<string, string> = {
   '.map': 'application/json; charset=utf-8',
 };
 
-// Reused across calls so repeated visual-test runs don't accumulate one static
-// server per invocation; the same server just serves whatever is currently on disk.
-let activeServer: { server: Server; reportDir: string; url: string } | null = null;
+interface ActiveReportServer {
+  server: Server;
+  reportDir: string;
+  url: string;
+}
+
+// Reused across calls so repeated visual-test runs don't accumulate one static server per
+// invocation. Stored on globalThis rather than a module-level binding: some hosts (e.g.
+// mastra dev) re-evaluate this module per tool call, which would otherwise reset a plain
+// `let` back to null on every call, losing the reference to the previous server and
+// leaking a listening socket (and, under watch-mode process restarts, a stray process)
+// every single run instead of ever reusing or closing it.
+const GLOBAL_KEY = Symbol.for('pixel-guard.report-server');
+type GlobalWithReportServer = typeof globalThis & { [GLOBAL_KEY]?: ActiveReportServer | null };
+const globalState = globalThis as GlobalWithReportServer;
+
+function getActiveServer(): ActiveReportServer | null {
+  return globalState[GLOBAL_KEY] ?? null;
+}
+
+function setActiveServer(value: ActiveReportServer | null): void {
+  globalState[GLOBAL_KEY] = value;
+}
+
+// Registered exactly once per process (guarded via globalThis, for the same reload-safety
+// reason as above) as a last-resort cleanup: if the process is exiting anyway, make sure
+// the listening socket doesn't outlive it.
+const EXIT_HANDLER_KEY = Symbol.for('pixel-guard.report-server.exit-handler-registered');
+type GlobalWithExitFlag = typeof globalThis & { [EXIT_HANDLER_KEY]?: boolean };
+const globalExitFlag = globalThis as GlobalWithExitFlag;
+if (!globalExitFlag[EXIT_HANDLER_KEY]) {
+  globalExitFlag[EXIT_HANDLER_KEY] = true;
+  process.on('exit', () => {
+    getActiveServer()?.server.close();
+  });
+}
 
 export async function serveReport(reportDir: string): Promise<{ url: string } | null> {
   try {
@@ -31,13 +64,14 @@ export async function serveReport(reportDir: string): Promise<{ url: string } | 
     return null;
   }
 
+  const activeServer = getActiveServer();
   if (activeServer && activeServer.reportDir === reportDir) {
     return { url: activeServer.url };
   }
 
   if (activeServer) {
     activeServer.server.close();
-    activeServer = null;
+    setActiveServer(null);
   }
 
   const server = createServer((req, res) => {
@@ -65,6 +99,19 @@ export async function serveReport(reportDir: string): Promise<{ url: string } | 
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
   const url = `http://localhost:${port}/`;
-  activeServer = { server, reportDir, url };
+  setActiveServer({ server, reportDir, url });
   return { url };
+}
+
+// Playwright writes its HTML report on every run, whether tests pass or fail; serve it
+// locally so the report is always reachable, and surface the link clearly in plain-text
+// responses -- the primary channel most MCP clients (e.g. Claude Code) actually render.
+export async function getReportUrl(targetDir: string): Promise<string | null> {
+  const reportDir = join(targetDir, 'tools', 'visual-tests', 'playwright-report');
+  const report = await serveReport(reportDir);
+  return report?.url ?? null;
+}
+
+export function withReportUrl(message: string, reportUrl: string | null): string {
+  return reportUrl ? `${message}\n\nOpen the Playwright report: ${reportUrl}` : message;
 }

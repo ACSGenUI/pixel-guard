@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import { checkPrerequisitesStep, checkProjectStructureStep, SIDEKICK_SETUP_MESSAGE } from './aem-visual-test-install.js';
 import { startDevServer, stopDevServer } from './dev-server.js';
+import { resolveProjectDir } from './project-dir.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -15,7 +16,7 @@ export const startDevServerForGenerateStep = createStep({
     devServerStarted: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     if (!dockerInstalled || !projectStructureValid) {
@@ -24,7 +25,8 @@ export const startDevServerForGenerateStep = createStep({
         message: 'Skipped starting the dev server because prerequisites were not met.',
       };
     }
-    const { started, message } = await startDevServer(process.cwd());
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
+    const { started, message } = await startDevServer(targetDir);
     return { devServerStarted: started, message };
   },
 });
@@ -37,7 +39,7 @@ export const generateVisualTestsOnlyStep = createStep({
     visualTestsGenerated: z.boolean(),
     message: z.string(),
   }),
-  execute: async ({ getStepResult }) => {
+  execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
     const { projectStructureValid } = getStepResult(checkProjectStructureStep);
     const { devServerStarted } = getStepResult(startDevServerForGenerateStep);
@@ -47,8 +49,9 @@ export const generateVisualTestsOnlyStep = createStep({
         message: 'Skipped generating visual tests because prerequisites were not met.',
       };
     }
+    const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
     try {
-      await execFileAsync('npm', ['run', 'test:visual:generate'], { cwd: process.cwd() });
+      await execFileAsync('npm', ['run', 'test:visual:generate'], { cwd: targetDir });
       return { visualTestsGenerated: true, message: 'Generated visual tests.' };
     } catch (error) {
       return {
@@ -76,7 +79,9 @@ export const stopDevServerAfterGenerateStep = createStep({
 export const generateVisualTestsWorkflow = createWorkflow({
   id: 'generate-visual-tests',
   description: 'Regenerates Playwright visual tests from the current sidekick library blocks: starts the AEM dev server, runs npm run test:visual:generate, then stops the dev server. Assumes the visual-test environment (npm dependencies, Docker image) was already installed via the aem-visual-test-install workflow.',
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    projectDir: z.string().optional().describe('Absolute path to the target AEM project. Defaults to CLAUDE_PROJECT_DIR or the server process\'s working directory when omitted.'),
+  }),
   outputSchema: z.object({
     dockerInstalled: z.boolean(),
     dockerMessage: z.string(),
