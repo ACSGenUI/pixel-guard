@@ -6,7 +6,8 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "allowJs": true,
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src", "aem-visual-checker/changes.js"]
 }
