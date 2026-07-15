@@ -54,11 +54,43 @@ export const checkPrerequisitesStep = createStep({
   },
 });
 
+export const checkProjectStructureStep = createStep({
+  id: 'check-project-structure',
+  description: 'Checks that the current project has the required AEM Edge Delivery Services file structure (blocks folder, scripts/aem.js, package.json, head.html).',
+  inputSchema: checkPrerequisitesStep.outputSchema,
+  outputSchema: z.object({
+    projectStructureValid: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async () => {
+    const missing = await findMissingProjectPaths(process.cwd());
+    if (missing.length === 0) {
+      return { projectStructureValid: true, message: 'Project structure is valid.' };
+    }
+    return {
+      projectStructureValid: false,
+      message: `Missing required project files: ${missing.join(', ')}. This does not look like an AEM Edge Delivery Services project.`,
+    };
+  },
+});
+
 export const aemVisualTestInstallWorkflow = createWorkflow({
   id: 'aem-visual-test-install',
   description: 'Install or Scaffold the AEM Visual Test environment in the current project. Check for prerequisites and provide instructions if not met. copy and modify the necessary files to set up the environment.',
   inputSchema: z.object({}),
-  outputSchema: checkPrerequisitesStep.outputSchema,
+  outputSchema: z.object({
+    dockerInstalled: z.boolean(),
+    dockerMessage: z.string(),
+    projectStructureValid: z.boolean(),
+    projectStructureMessage: z.string(),
+  }),
 })
   .then(checkPrerequisitesStep)
+  .then(checkProjectStructureStep)
+  .map({
+    dockerInstalled: { step: checkPrerequisitesStep, path: 'dockerInstalled' },
+    dockerMessage: { step: checkPrerequisitesStep, path: 'message' },
+    projectStructureValid: { step: checkProjectStructureStep, path: 'projectStructureValid' },
+    projectStructureMessage: { step: checkProjectStructureStep, path: 'message' },
+  })
   .commit();
