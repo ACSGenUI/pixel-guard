@@ -1,49 +1,67 @@
 import { createTool } from '@mastra/core/tools';
-import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { runVisualTestsWorkflow } from '../workflows/run-visual-tests.js';
 import { askYesNo } from './elicit-yes-no.js';
-import { appendErrorOutput, formatWorkflowResult } from './format-workflow-result.js';
+import { formatWorkflowResult, withReportLine } from './format-workflow-result.js';
 
-const MAX_DIFF_IMAGES = 5;
+const MAX_ERROR_MESSAGE_LENGTH = 1500;
 
-interface DiagnosticSource {
-  errorOutput: string | null;
+interface TestOutcome {
+  title: string;
+  passed: boolean;
+  errorMessage: string | null;
   diffImagePaths: string[];
 }
 
-type ImageContentBlock = { type: 'image'; data: string; mimeType: string };
+interface DiagnosticSource {
+  errorOutput: string | null;
+  testResults: TestOutcome[] | null;
+}
 
-// Reads the screenshot-diff images Playwright wrote for a failed run and attaches them
-// as image content blocks alongside the text -- a pixel diff is often the only way to
-// actually tell what changed, and text output alone can't show that.
-async function buildDiagnostics(summary: string, output: DiagnosticSource): Promise<{ text: string; images: ImageContentBlock[] }> {
-  const text = appendErrorOutput(summary, output.errorOutput);
-  const selectedPaths = output.diffImagePaths.slice(0, MAX_DIFF_IMAGES);
-  const images: ImageContentBlock[] = [];
-  for (const path of selectedPaths) {
-    try {
-      const data = await readFile(path);
-      images.push({ type: 'image', data: data.toString('base64'), mimeType: 'image/png' });
-    } catch {
-      // Skip images that can't be read rather than failing the whole response.
+// Lists every block/viewport test with pass/fail (so passing ones are visible too, not just
+// an aggregate "tests ran" line), and for failures, the clean per-test error plus a diff
+// image file PATH -- not embedded image data. Embedding base64 images previously blew past
+// the host's token limit on any run with more than a couple of failures (multiple full-size
+// PNGs easily exceed a megabyte of base64 text); a path lets the agent read specific images
+// with its own file-reading tool only when it actually needs to look at one.
+function buildTestResultsSection(testResults: TestOutcome[]): string {
+  const passed = testResults.filter((t) => t.passed).length;
+  const lines = [`### Test results (${testResults.length} total, ${passed} passed, ${testResults.length - passed} failed)`, ''];
+
+  for (const test of testResults) {
+    lines.push(`${test.passed ? '✅' : '❌'} ${test.title}`);
+    if (!test.passed) {
+      if (test.errorMessage) {
+        const trimmed = test.errorMessage.length > MAX_ERROR_MESSAGE_LENGTH
+          ? `${test.errorMessage.slice(0, MAX_ERROR_MESSAGE_LENGTH)}...`
+          : test.errorMessage;
+        lines.push(`   ${trimmed.split('\n').join('\n   ')}`);
+      }
+      for (const diffPath of test.diffImagePaths) {
+        lines.push(`   Diff image: ${diffPath}`);
+      }
     }
   }
-  const omitted = output.diffImagePaths.length - selectedPaths.length;
-  const note = images.length > 0
-    ? `\n\nAttached ${images.length} screenshot diff image${images.length === 1 ? '' : 's'}${omitted > 0 ? ` (${omitted} more not attached)` : ''}.`
-    : '';
 
-  return { text: `${text}${note}`, images };
+  return lines.join('\n');
+}
+
+function buildDiagnostics(summary: string, output: DiagnosticSource): string {
+  if (output.testResults) {
+    return `${summary}\n\n${buildTestResultsSection(output.testResults)}`;
+  }
+  // Legacy fallback for a target project installed before the JSON reporter was added --
+  // re-running aemVisualTestInstall picks up the updated Playwright config.
+  return output.errorOutput ? `${summary}\n\n### Error output\n\n\`\`\`\n${output.errorOutput}\n\`\`\`` : summary;
 }
 
 export const runVisualTestsTool = createTool({
   id: 'runVisualTests',
-  description: 'Runs the Playwright visual tests (all, or a single block when blockName is given). Use mode to control what happens on failure: "quick" (default) just reports pass/fail, "diagnose" also includes the raw test error output and screenshot diff images, "interactive" asks before revealing diagnostics and before attempting a fix.',
+  description: 'Runs the Playwright visual tests (all, or a single block when blockName is given). Use mode to control what happens on failure: "quick" (default) just reports pass/fail, "diagnose" also includes a per-block pass/fail breakdown with error details and diff image paths, "interactive" asks before revealing diagnostics and before attempting a fix.',
   inputSchema: z.object({
     blockName: z.string().optional().describe('Name of a single block to run visual tests for (e.g. "Columns"). Omit to run the full visual test suite.'),
     projectDir: z.string().optional().describe('Absolute path to the target AEM project. Defaults to CLAUDE_PROJECT_DIR or the server process\'s working directory when omitted -- required when calling this tool from a host with no notion of the target project (e.g. Mastra Studio).'),
-    mode: z.enum(['quick', 'diagnose', 'interactive']).optional().default('quick').describe('What to do if the tests fail: "quick" just reports pass/fail, "diagnose" includes the raw error output and screenshot diff images for debugging, "interactive" asks (via MCP elicitation) before showing diagnostics and before attempting a fix.'),
+    mode: z.enum(['quick', 'diagnose', 'interactive']).optional().default('quick').describe('What to do if the tests fail: "quick" just reports pass/fail, "diagnose" includes a per-block pass/fail breakdown with error details and diff image paths, "interactive" asks (via MCP elicitation) before showing diagnostics and before attempting a fix.'),
   }),
   execute: async ({ blockName, projectDir, mode }, context) => {
     const run = await runVisualTestsWorkflow.createRun();
@@ -54,29 +72,34 @@ export const runVisualTestsTool = createTool({
       return { content: [{ type: 'text', text: `Run Visual Tests did not complete (status: ${result.status}).` }] };
     }
 
-    const summary = formatWorkflowResult('Run Visual Tests', [
+    const summary = withReportLine(formatWorkflowResult('Run Visual Tests', [
       { label: 'Docker installed', success: output.dockerInstalled, message: output.dockerMessage },
       { label: 'Project structure valid', success: output.projectStructureValid, message: output.projectStructureMessage },
       { label: 'Dev server started', success: output.devServerStarted, message: output.devServerMessage },
       { label: 'Visual tests ran', success: output.visualTestsRan, message: output.visualTestsRanMessage },
       { label: 'Dev server stopped', success: output.devServerStopped, message: output.devServerStoppedMessage },
-    ]);
+    ]), output.reportUrl);
+
+    // Show the per-block breakdown whenever we have it, even on a passing run and even in
+    // "quick" mode -- that's the whole point of listing which blocks passed, not just that
+    // "tests ran" succeeded.
+    const withTestResults = output.testResults
+      ? `${summary}\n\n${buildTestResultsSection(output.testResults)}`
+      : summary;
 
     if (output.visualTestsRan || mode === 'quick') {
-      return { content: [{ type: 'text', text: summary }] };
+      return { content: [{ type: 'text', text: withTestResults }] };
     }
 
     if (mode === 'diagnose') {
-      const { text, images } = await buildDiagnostics(summary, output);
-      return { content: [{ type: 'text' as const, text }, ...images] };
+      return { content: [{ type: 'text', text: buildDiagnostics(summary, output) }] };
     }
 
     const mcp = context.mcp;
     if (!mcp) {
       // No elicitation support available (e.g. called outside the MCP protocol) -- just
       // return everything we've got rather than silently skipping diagnostics.
-      const { text, images } = await buildDiagnostics(summary, output);
-      return { content: [{ type: 'text' as const, text }, ...images] };
+      return { content: [{ type: 'text', text: buildDiagnostics(summary, output) }] };
     }
 
     const wantsDiagnostics = await askYesNo(
@@ -88,7 +111,7 @@ export const runVisualTestsTool = createTool({
       return { content: [{ type: 'text', text: summary }] };
     }
 
-    const { text: diagnosedText, images } = await buildDiagnostics(summary, output);
+    const diagnosedText = buildDiagnostics(summary, output);
 
     const wantsFix = await askYesNo(
       mcp,
@@ -96,17 +119,14 @@ export const runVisualTestsTool = createTool({
       'attemptFix',
     );
     if (!wantsFix) {
-      return { content: [{ type: 'text' as const, text: diagnosedText }, ...images] };
+      return { content: [{ type: 'text', text: diagnosedText }] };
     }
 
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: `${diagnosedText}\n\n---\n\nThe user has approved attempting a fix. Analyze the error output and diff images above and fix the underlying issue in the project.`,
-        },
-        ...images,
-      ],
+      content: [{
+        type: 'text',
+        text: `${diagnosedText}\n\n---\n\nThe user has approved attempting a fix. Analyze the error output above (read the diff image paths listed, if useful) and fix the underlying issue in the project.`,
+      }],
     };
   },
 });

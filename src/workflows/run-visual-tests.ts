@@ -5,17 +5,25 @@ import { z } from 'zod';
 import { checkPrerequisitesStep, checkProjectStructureStep } from './aem-visual-test-install.js';
 import { blockSpecExists, listAvailableBlocks, resolveBlockSpecPath } from './block-spec.js';
 import { startDevServer, stopDevServer } from './dev-server.js';
+import { parsePlaywrightResults } from './playwright-results.js';
 import { resolveProjectDir } from './project-dir.js';
-import { getReportUrl, withReportUrl } from './report-server.js';
-import { findDiffImages } from './test-artifacts.js';
+import { getReportUrl } from './report-server.js';
 
 const execFileAsync = promisify(execFile);
 
 const MAX_ERROR_OUTPUT_LENGTH = 8000;
 
-// execFile's rejection carries the raw stdout/stderr from the failed command (Playwright's
-// actual test-failure details -- assertion diffs, stack traces) beyond the generic
-// "Command failed" message, which is what an agent needs to actually diagnose a failure.
+const testOutcomeSchema = z.object({
+  title: z.string(),
+  passed: z.boolean(),
+  errorMessage: z.string().nullable(),
+  diffImagePaths: z.array(z.string()),
+});
+
+// execFile's rejection carries the raw stdout/stderr from the failed command. This is only
+// used as a fallback when testResults is unavailable (e.g. the command failed before any
+// test ran, or the target project predates the JSON reporter) -- when testResults IS
+// available it's a much more precise, per-test source of truth.
 function extractErrorOutput(error: unknown): string | null {
   const { stdout, stderr } = error as { stdout?: string; stderr?: string };
   const combined = [stdout, stderr].filter((part): part is string => Boolean(part && part.trim())).join('\n');
@@ -70,8 +78,8 @@ export const runVisualTestsStep = createStep({
     visualTestsRan: z.boolean(),
     message: z.string(),
     reportUrl: z.string().nullable(),
+    testResults: z.array(testOutcomeSchema).nullable(),
     errorOutput: z.string().nullable(),
-    diffImagePaths: z.array(z.string()),
   }),
   execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
@@ -82,71 +90,61 @@ export const runVisualTestsStep = createStep({
         visualTestsRan: false,
         message: 'Skipped running visual tests because prerequisites were not met.',
         reportUrl: null,
+        testResults: null,
         errorOutput: null,
-        diffImagePaths: [],
       };
     }
 
     const { blockName, projectDir } = getInitData<{ blockName?: string; projectDir?: string }>();
     const targetDir = resolveProjectDir(projectDir);
 
-    if (!blockName) {
-      try {
-        await execFileAsync('npm', ['run', 'test:visual'], { cwd: targetDir });
-        const reportUrl = await getReportUrl(targetDir);
-        return {
-          visualTestsRan: true,
-          message: withReportUrl('Ran all visual tests.', reportUrl),
-          reportUrl,
-          errorOutput: null,
-          diffImagePaths: [],
-        };
-      } catch (error) {
-        const reportUrl = await getReportUrl(targetDir);
+    if (blockName) {
+      const specPath = resolveBlockSpecPath(blockName);
+      if (!(await blockSpecExists(targetDir, specPath))) {
+        const available = await listAvailableBlocks(targetDir);
         return {
           visualTestsRan: false,
-          message: withReportUrl(`Visual tests failed: ${(error as Error).message}`, reportUrl),
-          reportUrl,
-          errorOutput: extractErrorOutput(error),
-          diffImagePaths: await findDiffImages(targetDir),
+          message: available.length > 0
+            ? `No visual test found for block "${blockName}" (expected ${specPath}). Available blocks: ${available.join(', ')}.`
+            : `No visual test found for block "${blockName}" (expected ${specPath}). No block tests have been generated yet -- run generate-visual-tests first.`,
+          reportUrl: null,
+          testResults: null,
+          errorOutput: null,
         };
       }
     }
 
-    const specPath = resolveBlockSpecPath(blockName);
-    if (!(await blockSpecExists(targetDir, specPath))) {
-      const available = await listAvailableBlocks(targetDir);
-      return {
-        visualTestsRan: false,
-        message: available.length > 0
-          ? `No visual test found for block "${blockName}" (expected ${specPath}). Available blocks: ${available.join(', ')}.`
-          : `No visual test found for block "${blockName}" (expected ${specPath}). No block tests have been generated yet -- run generate-visual-tests first.`,
-        reportUrl: null,
-        errorOutput: null,
-        diffImagePaths: [],
-      };
+    const args = blockName
+      ? ['run', 'test:visual:block', '--', resolveBlockSpecPath(blockName)]
+      : ['run', 'test:visual'];
+
+    let commandErrorMessage: string | null = null;
+    let rawErrorOutput: string | null = null;
+    try {
+      await execFileAsync('npm', args, { cwd: targetDir });
+    } catch (error) {
+      commandErrorMessage = (error as Error).message;
+      rawErrorOutput = extractErrorOutput(error);
     }
 
-    try {
-      await execFileAsync('npm', ['run', 'test:visual:block', '--', specPath], { cwd: targetDir });
-      const reportUrl = await getReportUrl(targetDir);
-      return {
-        visualTestsRan: true,
-        message: withReportUrl(`Ran visual tests for block "${blockName}".`, reportUrl),
-        reportUrl,
-        errorOutput: null,
-        diffImagePaths: [],
-      };
-    } catch (error) {
-      const reportUrl = await getReportUrl(targetDir);
-      return {
-        visualTestsRan: false,
-        message: withReportUrl(`Visual tests for block "${blockName}" failed: ${(error as Error).message}`, reportUrl),
-        errorOutput: extractErrorOutput(error),
-        reportUrl,
-        diffImagePaths: await findDiffImages(targetDir),
-      };
-    }
+    const reportUrl = await getReportUrl(targetDir);
+    const testResults = await parsePlaywrightResults(targetDir);
+    const visualTestsRan = commandErrorMessage === null;
+    const scope = blockName ? ` for block "${blockName}"` : '';
+
+    const message = visualTestsRan
+      ? `Ran all visual tests${scope}.`
+      : `Visual tests${scope} failed: ${commandErrorMessage}`;
+
+    return {
+      visualTestsRan,
+      message,
+      reportUrl,
+      testResults,
+      // Only fall back to the raw command output when we don't have structured per-test
+      // results to work with -- e.g. the target project predates the JSON reporter.
+      errorOutput: testResults ? null : rawErrorOutput,
+    };
   },
 });
 
@@ -181,8 +179,8 @@ export const runVisualTestsWorkflow = createWorkflow({
     visualTestsRan: z.boolean(),
     visualTestsRanMessage: z.string(),
     reportUrl: z.string().nullable(),
+    testResults: z.array(testOutcomeSchema).nullable(),
     errorOutput: z.string().nullable(),
-    diffImagePaths: z.array(z.string()),
     devServerStopped: z.boolean(),
     devServerStoppedMessage: z.string(),
   }),
@@ -203,8 +201,8 @@ export const runVisualTestsWorkflow = createWorkflow({
     visualTestsRan: { step: runVisualTestsStep, path: 'visualTestsRan' },
     visualTestsRanMessage: { step: runVisualTestsStep, path: 'message' },
     reportUrl: { step: runVisualTestsStep, path: 'reportUrl' },
+    testResults: { step: runVisualTestsStep, path: 'testResults' },
     errorOutput: { step: runVisualTestsStep, path: 'errorOutput' },
-    diffImagePaths: { step: runVisualTestsStep, path: 'diffImagePaths' },
     devServerStopped: { step: stopDevServerAfterRunStep, path: 'devServerStopped' },
     devServerStoppedMessage: { step: stopDevServerAfterRunStep, path: 'message' },
   })

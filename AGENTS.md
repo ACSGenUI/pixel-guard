@@ -2,6 +2,8 @@
 
 This file helps AI agents (Claude Code and other MCP-compatible agents) understand pixel-guard's MCP tools: what each one does, when to call it, and what input it expects.
 
+> **Note:** pixel-guard is normally connected as an MCP server from within a *different* project (the target AEM project being tested), so this file won't be discovered there. The condensed version of this guidance is also sent to any connecting client via the MCP `instructions` field (`src/mcp-server.ts`) — that's what actually reaches an agent working in the target project. Keep the two in sync when either changes.
+
 ## What this MCP server is for
 
 pixel-guard installs and drives a Playwright-based visual regression test suite for AEM Edge Delivery Services (EDS) projects. It renders every block variation from the project's Sidekick Library at multiple viewports, screenshots them, and compares against committed baselines to catch unintended visual changes.
@@ -48,11 +50,15 @@ Regenerates Playwright visual tests from the current Sidekick Library blocks. As
 
 ### `runVisualTests`
 
-Runs the Playwright visual tests — the full suite, or a single block when `blockName` is given. The `mode` input controls what happens if the tests fail:
+Runs the Playwright visual tests — the full suite, or a single block when `blockName` is given. Whenever a per-test breakdown is available, the response lists **every** block/viewport test with ✅/❌ (not just an aggregate pass/fail), so you can see what passed as well as what failed — this shows up automatically, in every mode, whenever the run produces one.
 
-- `quick` (default) — just reports pass/fail, no further detail.
-- `diagnose` — also includes the raw test output (assertion diffs, stack traces) plus up to 5 Playwright screenshot-diff images (`*-diff.png` from `tools/visual-tests/test-results/`) attached as image content, so the failure can be diagnosed and fixed.
-- `interactive` — asks (via MCP elicitation) whether to reveal the detailed error output and diff images, then asks again whether a fix should be attempted for the underlying issue. If approved, the tool's response instructs the agent to analyze the error output/images and fix it. Falls back to the same behavior as `diagnose` if the connected client doesn't support elicitation.
+The `mode` input controls what happens beyond that if the tests fail:
+
+- `quick` (default) — just the pass/fail summary (plus the per-test breakdown, if available).
+- `diagnose` — for each failing test, also includes its clean error message and the file path to its Playwright screenshot-diff image (`*-diff.png`). Paths are given, not embedded image data — read a specific path with your own file-reading tool if you need to look at one; embedding every diff image inline routinely exceeded the response size/token limit on any run with more than a couple of failures.
+- `interactive` — asks (via MCP elicitation) whether to reveal the detailed error output, then asks again whether a fix should be attempted for the underlying issue. If approved, the tool's response instructs the agent to analyze the output and fix it. Falls back to the same behavior as `diagnose` if the connected client doesn't support elicitation.
+
+The per-test breakdown and diff-image paths require the target project's `tools/visual-tests/playwright.config.ts` to have Playwright's JSON reporter configured (added by `aemVisualTestInstall`). Projects installed before this was added won't have it — re-run `aemVisualTestInstall` to pick it up (it force-overwrites `tools/`). Until then, `runVisualTests` falls back to a coarser aggregate pass/fail plus raw command output.
 
 **Input:** `blockName?` (string), `projectDir?` (string), `mode?` (`"quick" | "diagnose" | "interactive"`, default `"quick"`)
 

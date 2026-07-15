@@ -7,7 +7,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   outputDir: './test-results',
-  reporter: [['html', { outputFolder: './playwright-report', open: 'never' }]],
+  reporter: [
+    ['html', { outputFolder: './playwright-report', open: 'never' }],
+    // Structured per-test results (title/status/error/attachment paths) for tooling that
+    // needs to report pass/fail per block or locate diff images without scraping stdout.
+    ['json', { outputFile: './test-results/results.json' }],
+  ],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3000',
     trace: 'on-first-retry',

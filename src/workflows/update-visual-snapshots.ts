@@ -6,7 +6,7 @@ import { checkPrerequisitesStep, checkProjectStructureStep } from './aem-visual-
 import { blockSpecExists, listAvailableBlocks, resolveBlockSpecPath } from './block-spec.js';
 import { startDevServer, stopDevServer } from './dev-server.js';
 import { resolveProjectDir } from './project-dir.js';
-import { getReportUrl, withReportUrl } from './report-server.js';
+import { getReportUrl } from './report-server.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -75,12 +75,12 @@ export const updateVisualSnapshotsStep = createStep({
       try {
         await execFileAsync('npm', ['run', 'test:visual:update'], { cwd: targetDir });
         const reportUrl = await getReportUrl(targetDir);
-        return { snapshotsUpdated: true, message: withReportUrl('Updated all visual snapshots.', reportUrl), reportUrl };
+        return { snapshotsUpdated: true, message: 'Updated all visual snapshots.', reportUrl };
       } catch (error) {
         const reportUrl = await getReportUrl(targetDir);
         return {
           snapshotsUpdated: false,
-          message: withReportUrl(`Updating visual snapshots failed: ${(error as Error).message}`, reportUrl),
+          message: `Updating visual snapshots failed: ${(error as Error).message}`,
           reportUrl,
         };
       }
@@ -103,14 +103,14 @@ export const updateVisualSnapshotsStep = createStep({
       const reportUrl = await getReportUrl(targetDir);
       return {
         snapshotsUpdated: true,
-        message: withReportUrl(`Updated visual snapshots for block "${blockName}".`, reportUrl),
+        message: `Updated visual snapshots for block "${blockName}".`,
         reportUrl,
       };
     } catch (error) {
       const reportUrl = await getReportUrl(targetDir);
       return {
         snapshotsUpdated: false,
-        message: withReportUrl(`Updating visual snapshots for block "${blockName}" failed: ${(error as Error).message}`, reportUrl),
+        message: `Updating visual snapshots for block "${blockName}" failed: ${(error as Error).message}`,
         reportUrl,
       };
     }

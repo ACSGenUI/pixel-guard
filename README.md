@@ -56,10 +56,12 @@ Opens Studio at `http://localhost:4111`. Go to **MCP Servers → pixelGuard → 
 |---|---|---|
 | `aemVisualTestInstall` | Installs/scaffolds the visual-test environment in the target project | "Set up visual regression testing for this AEM project." |
 | `generateVisualTests` | Regenerates Playwright specs from the Sidekick Library's current blocks | "I added a new block variation, regenerate the visual tests." |
-| `runVisualTests` | Runs the visual tests (all, or a single block). `mode` controls what happens on failure: `quick` (default) just reports pass/fail, `diagnose` includes the raw error output and screenshot diff images, `interactive` asks before showing diagnostics and before attempting a fix | "Run the visual tests and fix any issues." |
+| `runVisualTests` | Runs the visual tests (all, or a single block) and lists every block/viewport test that passed or failed. `mode` controls what happens beyond that on failure: `quick` (default) just the pass/fail breakdown, `diagnose` adds each failure's error message and diff-image file path, `interactive` asks before showing diagnostics and before attempting a fix | "Run the visual tests and fix any issues." |
 | `updateVisualSnapshots` | Updates the baseline screenshots (all, or a single block) | "Update the visual snapshots, the Columns redesign is intentional." |
 
 See [AGENTS.md](./AGENTS.md) for the full input schema and more example prompts per tool.
+
+> **Note:** the per-block pass/fail breakdown and diff-image paths in `runVisualTests` need Playwright's JSON reporter, which `aemVisualTestInstall` configures in the target project. If you installed pixel-guard into a project before this was added, re-run `aemVisualTestInstall` to pick it up.
 
 ## Development
 

@@ -16,6 +16,9 @@ export function formatWorkflowResult(title: string, steps: WorkflowStepSummary[]
   ].join('\n');
 }
 
-export function appendErrorOutput(summary: string, errorOutput: string | null): string {
-  return errorOutput ? `${summary}\n\n### Error output\n\n\`\`\`\n${errorOutput}\n\`\`\`` : summary;
+// Playwright writes its HTML report on every run, whether tests pass or fail. Given its own
+// dedicated line (rather than embedded inside a step message) so it doesn't get lost among
+// the other step bullets -- it's useful regardless of overall pass/fail.
+export function withReportLine(summary: string, reportUrl: string | null): string {
+  return reportUrl ? `${summary}\n\n**Playwright report:** ${reportUrl}` : summary;
 }

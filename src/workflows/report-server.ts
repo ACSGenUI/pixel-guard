@@ -111,7 +111,3 @@ export async function getReportUrl(targetDir: string): Promise<string | null> {
   const report = await serveReport(reportDir);
   return report?.url ?? null;
 }
-
-export function withReportUrl(message: string, reportUrl: string | null): string {
-  return reportUrl ? `${message}\n\nOpen the Playwright report: ${reportUrl}` : message;
-}

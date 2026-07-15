@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { updateVisualSnapshotsWorkflow } from '../workflows/update-visual-snapshots.js';
-import { formatWorkflowResult } from './format-workflow-result.js';
+import { formatWorkflowResult, withReportLine } from './format-workflow-result.js';
 
 export const updateVisualSnapshotsTool = createTool({
   id: 'updateVisualSnapshots',
@@ -16,13 +16,13 @@ export const updateVisualSnapshotsTool = createTool({
     const output = result.status === 'success' ? result.result : undefined;
 
     const text = output
-      ? formatWorkflowResult('Update Visual Snapshots', [
+      ? withReportLine(formatWorkflowResult('Update Visual Snapshots', [
         { label: 'Docker installed', success: output.dockerInstalled, message: output.dockerMessage },
         { label: 'Project structure valid', success: output.projectStructureValid, message: output.projectStructureMessage },
         { label: 'Dev server started', success: output.devServerStarted, message: output.devServerMessage },
         { label: 'Snapshots updated', success: output.snapshotsUpdated, message: output.snapshotsUpdatedMessage },
         { label: 'Dev server stopped', success: output.devServerStopped, message: output.devServerStoppedMessage },
-      ])
+      ]), output.reportUrl)
       : `Update Visual Snapshots did not complete (status: ${result.status}).`;
 
     return { content: [{ type: 'text', text }] };
