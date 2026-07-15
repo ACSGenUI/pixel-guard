@@ -11,11 +11,11 @@ export const scripts = {
 };
 
 export const dependenciesToAdd = {
-  "@playwright/test": "^1.53.1",
+  "@playwright/test": "1.53.1",
   "cors": "^2.8.5",
   "dotenv": "^17.2.3",
   "express": "^4.21.2",
-  "playwright": "^1.53.1"
+  "playwright": "1.53.1"
 };
 
 export const devDependenciesToAdd = {
@@ -34,3 +34,4 @@ export const gitignoreLines = [
 ];
 
 export const hlxignoreLines = ["tools/visual-tests/*"];
+  

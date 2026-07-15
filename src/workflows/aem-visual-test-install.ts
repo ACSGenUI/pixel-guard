@@ -5,8 +5,9 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { mergePackageJson, appendMissingLines } from './update-project-config.js';
+import { mergePackageJson, appendMissingLines, addLoadScriptImport, addSidekickLibraryLoader } from './update-project-config.js';
 import { scripts, dependenciesToAdd, devDependenciesToAdd, gitignoreLines, hlxignoreLines } from '../../aem-visual-checker/changes.js';
+import { startDevServer, stopDevServer } from './dev-server.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +20,18 @@ macOS:
 Windows:
   - Download Docker Desktop: https://www.docker.com/products/docker-desktop
   - Or via winget: winget install Docker.DockerDesktop`;
+
+export const SIDEKICK_SETUP_MESSAGE = `Generating visual tests failed. This usually means the sidekick library is not set up correctly.
+Please follow the setup instructions here: https://www.aem.live/docs/sidekick-library
+
+  1. Start by creating a directory in you authoring environment - /tools/sidekick in the root of the mountpoint.
+  2. Create a directory inside the /tools/sidekick directory where you will store all the block variations. Directory should be called blocks and should be inside /tools/sidekick.
+  3. For this example, let's assume we want to define all the variations of a block called columns. First create a Word document called columns inside the blocks directory and provide examples of all the variations of the columns block. After each variation of the block add in a section delimiter.
+  4. Create a sheet called library in the /tools/sidekick directory and add the name of the block and the path to the Word document that contains the variations of the block.
+
+Debug points:
+  - Check if all pages are published.
+  - Manually check if this looks right in this link: http://localhost:3000/tools/sidekick/library.html`;
 
 const REQUIRED_PROJECT_PATHS: Array<{ relativePath: string; label: string }> = [
   { relativePath: 'blocks', label: 'blocks/ folder' },
@@ -116,7 +129,7 @@ export const copyRequiredFilesStep = createStep({
 
 export const updateProjectConfigStep = createStep({
   id: 'update-project-config',
-  description: 'Merges visual-test npm scripts/dependencies into package.json and appends ignore entries to .gitignore and .hlxignore, if prerequisites are met.',
+  description: 'Merges visual-test npm scripts/dependencies into package.json, appends ignore entries to .gitignore and .hlxignore, and wires the sidekick library loader into scripts/scripts.js, if prerequisites are met.',
   inputSchema: copyRequiredFilesStep.outputSchema,
   outputSchema: z.object({
     configUpdated: z.boolean(),
@@ -139,10 +152,165 @@ export const updateProjectConfigStep = createStep({
     });
     await appendMissingLines(join(process.cwd(), '.gitignore'), gitignoreLines);
     await appendMissingLines(join(process.cwd(), '.hlxignore'), hlxignoreLines);
+    const scriptsJsPath = join(process.cwd(), 'scripts', 'scripts.js');
+    await addLoadScriptImport(scriptsJsPath);
+    await addSidekickLibraryLoader(scriptsJsPath);
     return {
       configUpdated: true,
-      message: 'Updated package.json, .gitignore, and .hlxignore.',
+      message: 'Updated package.json, .gitignore, .hlxignore, and scripts/scripts.js.',
     };
+  },
+});
+
+export const runNpmInstallStep = createStep({
+  id: 'run-npm-install',
+  description: 'Runs npm install to install the newly added dependencies, if prerequisites are met.',
+  inputSchema: updateProjectConfigStep.outputSchema,
+  outputSchema: z.object({
+    npmInstallSucceeded: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ getStepResult }) => {
+    const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
+    const { projectStructureValid } = getStepResult(checkProjectStructureStep);
+    const { filesCopied } = getStepResult(copyRequiredFilesStep);
+    const { configUpdated } = getStepResult(updateProjectConfigStep);
+    if (!dockerInstalled || !projectStructureValid || !filesCopied || !configUpdated) {
+      return {
+        npmInstallSucceeded: false,
+        message: 'Skipped running npm install because prerequisites were not met.',
+      };
+    }
+    try {
+      await execFileAsync('npm', ['install'], { cwd: process.cwd() });
+      return { npmInstallSucceeded: true, message: 'Installed npm dependencies.' };
+    } catch (error) {
+      return {
+        npmInstallSucceeded: false,
+        message: `npm install failed: ${(error as Error).message}`,
+      };
+    }
+  },
+});
+
+export const startDevServerStep = createStep({
+  id: 'start-dev-server',
+  description: 'Starts the AEM dev server and visual-test server via npm run start, if prerequisites are met.',
+  inputSchema: runNpmInstallStep.outputSchema,
+  outputSchema: z.object({
+    devServerStarted: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ getStepResult }) => {
+    const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
+    const { projectStructureValid } = getStepResult(checkProjectStructureStep);
+    const { filesCopied } = getStepResult(copyRequiredFilesStep);
+    const { configUpdated } = getStepResult(updateProjectConfigStep);
+    const { npmInstallSucceeded } = getStepResult(runNpmInstallStep);
+    if (!dockerInstalled || !projectStructureValid || !filesCopied || !configUpdated || !npmInstallSucceeded) {
+      return {
+        devServerStarted: false,
+        message: 'Skipped starting the dev server because prerequisites were not met.',
+      };
+    }
+    const { started, message } = await startDevServer(process.cwd());
+    return { devServerStarted: started, message };
+  },
+});
+
+export const dockerBuildStep = createStep({
+  id: 'docker-build',
+  description: 'Builds the Playwright Docker image via npm run test:visual:build, if prerequisites are met.',
+  inputSchema: startDevServerStep.outputSchema,
+  outputSchema: z.object({
+    dockerBuildSucceeded: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ getStepResult }) => {
+    const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
+    const { projectStructureValid } = getStepResult(checkProjectStructureStep);
+    const { filesCopied } = getStepResult(copyRequiredFilesStep);
+    const { configUpdated } = getStepResult(updateProjectConfigStep);
+    const { npmInstallSucceeded } = getStepResult(runNpmInstallStep);
+    const { devServerStarted } = getStepResult(startDevServerStep);
+    if (
+      !dockerInstalled ||
+      !projectStructureValid ||
+      !filesCopied ||
+      !configUpdated ||
+      !npmInstallSucceeded ||
+      !devServerStarted
+    ) {
+      return {
+        dockerBuildSucceeded: false,
+        message: 'Skipped docker build because prerequisites were not met.',
+      };
+    }
+    try {
+      await execFileAsync('npm', ['run', 'test:visual:build'], { cwd: process.cwd() });
+      return { dockerBuildSucceeded: true, message: 'Built the Playwright Docker image.' };
+    } catch (error) {
+      return {
+        dockerBuildSucceeded: false,
+        message: `docker build failed: ${(error as Error).message}`,
+      };
+    }
+  },
+});
+
+export const generateVisualTestsStep = createStep({
+  id: 'generate-visual-tests',
+  description: 'Generates visual tests via npm run test:visual:generate, if prerequisites are met.',
+  inputSchema: dockerBuildStep.outputSchema,
+  outputSchema: z.object({
+    visualTestsGenerated: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ getStepResult }) => {
+    const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
+    const { projectStructureValid } = getStepResult(checkProjectStructureStep);
+    const { filesCopied } = getStepResult(copyRequiredFilesStep);
+    const { configUpdated } = getStepResult(updateProjectConfigStep);
+    const { npmInstallSucceeded } = getStepResult(runNpmInstallStep);
+    const { devServerStarted } = getStepResult(startDevServerStep);
+    const { dockerBuildSucceeded } = getStepResult(dockerBuildStep);
+    if (
+      !dockerInstalled ||
+      !projectStructureValid ||
+      !filesCopied ||
+      !configUpdated ||
+      !npmInstallSucceeded ||
+      !devServerStarted ||
+      !dockerBuildSucceeded
+    ) {
+      return {
+        visualTestsGenerated: false,
+        message: 'Skipped generating visual tests because prerequisites were not met.',
+      };
+    }
+    try {
+      await execFileAsync('npm', ['run', 'test:visual:generate'], { cwd: process.cwd() });
+      return { visualTestsGenerated: true, message: 'Generated visual tests.' };
+    } catch (error) {
+      return {
+        visualTestsGenerated: false,
+        message: `${SIDEKICK_SETUP_MESSAGE}\n\n${(error as Error).message}`,
+      };
+    }
+  },
+});
+
+export const stopDevServerStep = createStep({
+  id: 'stop-dev-server',
+  description: 'Stops the dev server started by start-dev-server, if one was started.',
+  inputSchema: generateVisualTestsStep.outputSchema,
+  outputSchema: z.object({
+    devServerStopped: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async () => {
+    const { stopped, message } = stopDevServer();
+    return { devServerStopped: stopped, message };
   },
 });
 
@@ -159,12 +327,27 @@ export const aemVisualTestInstallWorkflow = createWorkflow({
     filesCopiedMessage: z.string(),
     configUpdated: z.boolean(),
     configUpdatedMessage: z.string(),
+    npmInstallSucceeded: z.boolean(),
+    npmInstallMessage: z.string(),
+    devServerStarted: z.boolean(),
+    devServerMessage: z.string(),
+    dockerBuildSucceeded: z.boolean(),
+    dockerBuildMessage: z.string(),
+    visualTestsGenerated: z.boolean(),
+    visualTestsGeneratedMessage: z.string(),
+    devServerStopped: z.boolean(),
+    devServerStoppedMessage: z.string(),
   }),
 })
   .then(checkPrerequisitesStep)
   .then(checkProjectStructureStep)
   .then(copyRequiredFilesStep)
   .then(updateProjectConfigStep)
+  .then(runNpmInstallStep)
+  .then(startDevServerStep)
+  .then(dockerBuildStep)
+  .then(generateVisualTestsStep)
+  .then(stopDevServerStep)
   .map({
     dockerInstalled: { step: checkPrerequisitesStep, path: 'dockerInstalled' },
     dockerMessage: { step: checkPrerequisitesStep, path: 'message' },
@@ -174,5 +357,15 @@ export const aemVisualTestInstallWorkflow = createWorkflow({
     filesCopiedMessage: { step: copyRequiredFilesStep, path: 'message' },
     configUpdated: { step: updateProjectConfigStep, path: 'configUpdated' },
     configUpdatedMessage: { step: updateProjectConfigStep, path: 'message' },
+    npmInstallSucceeded: { step: runNpmInstallStep, path: 'npmInstallSucceeded' },
+    npmInstallMessage: { step: runNpmInstallStep, path: 'message' },
+    devServerStarted: { step: startDevServerStep, path: 'devServerStarted' },
+    devServerMessage: { step: startDevServerStep, path: 'message' },
+    dockerBuildSucceeded: { step: dockerBuildStep, path: 'dockerBuildSucceeded' },
+    dockerBuildMessage: { step: dockerBuildStep, path: 'message' },
+    visualTestsGenerated: { step: generateVisualTestsStep, path: 'visualTestsGenerated' },
+    visualTestsGeneratedMessage: { step: generateVisualTestsStep, path: 'message' },
+    devServerStopped: { step: stopDevServerStep, path: 'devServerStopped' },
+    devServerStoppedMessage: { step: stopDevServerStep, path: 'message' },
   })
   .commit();

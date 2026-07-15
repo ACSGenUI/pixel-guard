@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mergePackageJson, appendMissingLines } from './update-project-config.js';
+import { mergePackageJson, appendMissingLines, addLoadScriptImport, addSidekickLibraryLoader } from './update-project-config.js';
 
 async function makeTempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'pixel-guard-test-'));
@@ -116,6 +116,161 @@ test('appendMissingLines leaves the file unchanged when every line is already pr
     await appendMissingLines(filePath, ['.env']);
 
     assert.equal(await readFile(filePath, 'utf8'), 'node_modules\n.env\n');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('addLoadScriptImport adds loadScript to a multi-line import from ./aem.js', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    await writeFile(
+      filePath,
+      `import {
+  buildBlock,
+  loadHeader,
+  loadFooter,
+} from './aem.js';
+`,
+    );
+
+    await addLoadScriptImport(filePath);
+
+    assert.equal(
+      await readFile(filePath, 'utf8'),
+      `import {
+  buildBlock,
+  loadHeader,
+  loadFooter,
+  loadScript,
+} from './aem.js';
+`,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('addLoadScriptImport adds loadScript to a single-line import from ./aem.js', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    await writeFile(filePath, "import { buildBlock, loadHeader } from './aem.js';\n");
+
+    await addLoadScriptImport(filePath);
+
+    assert.equal(
+      await readFile(filePath, 'utf8'),
+      "import { buildBlock, loadHeader, loadScript } from './aem.js';\n",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('addLoadScriptImport is idempotent when loadScript is already imported', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    const original = "import { buildBlock, loadScript } from './aem.js';\n";
+    await writeFile(filePath, original);
+
+    await addLoadScriptImport(filePath);
+
+    assert.equal(await readFile(filePath, 'utf8'), original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('addLoadScriptImport throws when there is no import from ./aem.js', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    await writeFile(filePath, "import { foo } from './other.js';\n");
+
+    await assert.rejects(() => addLoadScriptImport(filePath), /Could not find an import from '\.\/aem\.js'/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('addSidekickLibraryLoader inserts the sidekick library loader before the closing brace of loadEager()', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    await writeFile(
+      filePath,
+      `export async function loadEager(doc) {
+  document.documentElement.lang = 'en';
+  const main = doc.querySelector('main');
+  if (main) {
+    decorateMain(main);
+  }
+}
+
+export async function loadLazy(doc) {
+  return doc;
+}
+`,
+    );
+
+    await addSidekickLibraryLoader(filePath);
+
+    const content = await readFile(filePath, 'utf8');
+    assert.equal(
+      content,
+      `export async function loadEager(doc) {
+  document.documentElement.lang = 'en';
+  const main = doc.querySelector('main');
+  if (main) {
+    decorateMain(main);
+  }
+  if (document.body.classList.contains('sidekick-library')) {
+    loadScript(\`\${window.hlx.codeBasePath}/tools/visual-tests/visual-test.js\`);
+    loadScript(\`\${window.hlx.codeBasePath}/tools/visual-overlay/index.js\`, { type: 'module' });
+  }
+}
+
+export async function loadLazy(doc) {
+  return doc;
+}
+`,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('addSidekickLibraryLoader is idempotent when the loader is already present', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    const original = `export async function loadEager(doc) {
+  if (document.body.classList.contains('sidekick-library')) {
+    loadScript(\`\${window.hlx.codeBasePath}/tools/visual-tests/visual-test.js\`);
+    loadScript(\`\${window.hlx.codeBasePath}/tools/visual-overlay/index.js\`, { type: 'module' });
+  }
+}
+`;
+    await writeFile(filePath, original);
+
+    await addSidekickLibraryLoader(filePath);
+
+    assert.equal(await readFile(filePath, 'utf8'), original);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('addSidekickLibraryLoader throws when loadEager() cannot be found', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    await writeFile(filePath, 'export async function loadLazy(doc) { return doc; }\n');
+
+    await assert.rejects(() => addSidekickLibraryLoader(filePath), /Could not find a loadEager\(\) function/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

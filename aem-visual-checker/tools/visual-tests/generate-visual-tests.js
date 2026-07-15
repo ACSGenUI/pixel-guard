@@ -26,90 +26,94 @@ const RENDER_TIMEOUT = 3000;
 const LAYOUT_TIMEOUT = 1000;
 
 async function fetchLibraryBlocks() {
-  try {
-    // Launch a headless browser
-    const browser = await chromium.launch();
-    const context = await browser.newContext();
-    const page = await context.newPage();
+  // Launch a headless browser
+  const browser = await chromium.launch();
+  const context = await browser.newContext();
+  const page = await context.newPage();
 
-    // Navigate to the library page with blocks plugin active
-    const baseURL = process.env.BASE_URL || 'http://localhost:3000';
-    await page.goto(`${baseURL}/tools/sidekick/library.html?plugin=blocks`);
+  // Navigate to the library page with blocks plugin active
+  const baseURL = process.env.BASE_URL || 'http://localhost:3000';
+  await page.goto(`${baseURL}/tools/sidekick/library.html?plugin=blocks`);
 
-    // Wait for the sidekick-library component to load
-    await page.waitForSelector('sidekick-library', { timeout: SELECTOR_TIMEOUT });
+  // Wait for the sidekick-library component to load
+  await page.waitForSelector('sidekick-library', { timeout: SELECTOR_TIMEOUT });
 
-    // Wait for the blocks to be loaded in the plugin
-    await page.waitForSelector('sp-sidenav[data-testid="blocks"]', { timeout: SELECTOR_TIMEOUT });
+  // Wait for the blocks to be loaded in the plugin
+  await page.waitForSelector('sp-sidenav[data-testid="blocks"]', { timeout: SELECTOR_TIMEOUT });
 
-    // Give it some time to fully load and render blocks
-    await page.waitForTimeout(RENDER_TIMEOUT);
+  // Give it some time to fully load and render blocks
+  await page.waitForTimeout(RENDER_TIMEOUT);
 
-    // Extract block information from the DOM
-    const blocks = await page.evaluate((templatesPath) => {
-      function querySelectorAllDeep(selector, root = document) {
-        const results = [];
+  // Extract block information from the DOM
+  const blocks = await page.evaluate((templatesPath) => {
+    function querySelectorAllDeep(selector, root = document) {
+      const results = [];
 
-        function findAll(node) {
-          // Check if current node matches (only for elements)
-          if (node.nodeType === Node.ELEMENT_NODE && node.matches && node.matches(selector)) {
-            results.push(node);
-          }
-
-          // Search in shadow DOM if present
-          if (node.shadowRoot) {
-            findAll(node.shadowRoot);
-          }
-
-          // Recursively search child elements
-          if (node.children) {
-            Array.from(node.children).forEach((child) => findAll(child));
-          }
+      function findAll(node) {
+        // Check if current node matches (only for elements)
+        if (node.nodeType === Node.ELEMENT_NODE && node.matches && node.matches(selector)) {
+          results.push(node);
         }
-        findAll(root);
-        return results;
+
+        // Search in shadow DOM if present
+        if (node.shadowRoot) {
+          findAll(node.shadowRoot);
+        }
+
+        // Recursively search child elements
+        if (node.children) {
+          Array.from(node.children).forEach((child) => findAll(child));
+        }
       }
+      findAll(root);
+      return results;
+    }
 
-      // Find the sidenav element that contains the blocks
-      const sidenav = querySelectorAllDeep('sp-sidenav[data-testid="blocks"]');
-      if (!sidenav) return [];
+    // Find the sidenav element that contains the blocks
+    const sidenav = querySelectorAllDeep('sp-sidenav[data-testid="blocks"]');
+    if (!sidenav) return [];
 
-      // Get all top-level sidenav items (these are the block categories)
-      const variations = querySelectorAllDeep('sp-sidenav > sp-sidenav-item > sp-sidenav-item.descendant');
+    // Get all top-level sidenav items (these are the block categories)
+    const variations = querySelectorAllDeep('sp-sidenav > sp-sidenav-item > sp-sidenav-item.descendant');
 
-      // Array to store all blocks
-      const blocksList = [];
+    // Array to store all blocks
+    const blocksList = [];
 
-      // Process each block parent item
-      variations.forEach((variationItem) => {
-        // Get the block name from the label attribute
-        const blockName = variationItem.parentElement.getAttribute('label');
-        // Add the block with its variations
-        blocksList.push({
-          name: blockName,
-          variationName: variationItem.getAttribute('label'),
-          path: `${templatesPath}${blockName.toLowerCase()}`,
-          variationIndex: variationItem.getAttribute('data-index'),
-        });
+    // Process each block parent item
+    variations.forEach((variationItem) => {
+      // Get the block name from the label attribute
+      const blockName = variationItem.parentElement.getAttribute('label');
+      // Add the block with its variations
+      blocksList.push({
+        name: blockName,
+        variationName: variationItem.getAttribute('label'),
+        path: `${templatesPath}${blockName.toLowerCase()}`,
+        variationIndex: variationItem.getAttribute('data-index'),
       });
+    });
 
-      return blocksList;
-    }, TEMPLATES_PATH);
+    return blocksList;
+  }, TEMPLATES_PATH);
 
-    // Close the browser
-    await browser.close();
-    return blocks;
-  } catch (error) {
-    console.error('Error fetching library blocks from HTML:', error);
-    return [];
-  }
+  // Close the browser
+  await browser.close();
+  return blocks;
 }
 
 function generateTestSpec(blockName, blockVariations) {
   const imports = 'import { test, expect } from \'@playwright/test\';\n\n';
 
+  // Variations can share the same label (e.g. two "Default" entries); Playwright
+  // requires unique test titles, so disambiguate duplicates with their variation index.
+  const nameCounts = blockVariations.reduce((counts, block) => {
+    counts.set(block.variationName, (counts.get(block.variationName) ?? 0) + 1);
+    return counts;
+  }, new Map());
+
   const testContent = blockVariations.flatMap((block) => {
-    const testName = `${block.variationName} visual test`;
+    const testName = nameCounts.get(block.variationName) > 1
+      ? `${block.variationName} (${block.variationIndex}) visual test`
+      : `${block.variationName} visual test`;
 
     // Some labels carry a parenthetical path suffix, e.g. "BlockName (something-12)",
     // where the real template folder is actually "something-12-blockname".
@@ -188,8 +192,7 @@ async function generateVisualTests() {
   // Fetch library blocks
   const blocks = await fetchLibraryBlocks();
   if (blocks.length === 0) {
-    console.log('No blocks found in library');
-    return;
+    throw new Error('No blocks found in library. Check that the sidekick library is set up and pages are published.');
   }
 
   // Group blocks by their name
@@ -231,4 +234,7 @@ async function generateVisualTests() {
 }
 
 // Run the generator
-generateVisualTests().catch(console.error);
+generateVisualTests().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

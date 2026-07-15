@@ -35,3 +35,68 @@ export async function appendMissingLines(filePath: string, lines: string[]): Pro
   const prefix = trimmedContent.length === 0 ? '' : `${trimmedContent}\n`;
   await writeFile(filePath, `${prefix}${missingLines.join('\n')}\n`, 'utf8');
 }
+
+const AEM_JS_IMPORT_PATTERN = /import\s*\{([\s\S]*?)\}\s*from\s*(['"])\.\/aem\.js\2/;
+
+export async function addLoadScriptImport(scriptsJsPath: string): Promise<void> {
+  const content = await readFile(scriptsJsPath, 'utf8');
+  const match = content.match(AEM_JS_IMPORT_PATTERN);
+  if (!match || match.index === undefined) {
+    throw new Error(`Could not find an import from './aem.js' in ${scriptsJsPath}.`);
+  }
+
+  const importedNames = match[1]
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+  if (importedNames.includes('loadScript')) {
+    return;
+  }
+
+  const isMultiline = match[1].includes('\n');
+  let trimmedNames = match[1].replace(/\s+$/, '');
+  if (!trimmedNames.endsWith(',')) {
+    trimmedNames += ',';
+  }
+  const updatedNamesBlock = isMultiline ? `${trimmedNames}\n  loadScript,\n` : `${trimmedNames} loadScript `;
+
+  const updatedImport = match[0].replace(match[1], updatedNamesBlock);
+  const updated = content.slice(0, match.index) + updatedImport + content.slice(match.index + match[0].length);
+  await writeFile(scriptsJsPath, updated, 'utf8');
+}
+
+const LOAD_EAGER_PATTERN = /function\s+loadEager\s*\([^)]*\)\s*\{/;
+const SIDEKICK_LIBRARY_LOADER_MARKER = 'tools/visual-tests/visual-test.js';
+const SIDEKICK_LIBRARY_LOADER_SNIPPET = [
+  "  if (document.body.classList.contains('sidekick-library')) {",
+  '    loadScript(`${window.hlx.codeBasePath}/tools/visual-tests/visual-test.js`);',
+  "    loadScript(`${window.hlx.codeBasePath}/tools/visual-overlay/index.js`, { type: 'module' });",
+  '  }',
+].join('\n');
+
+export async function addSidekickLibraryLoader(scriptsJsPath: string): Promise<void> {
+  const content = await readFile(scriptsJsPath, 'utf8');
+  if (content.includes(SIDEKICK_LIBRARY_LOADER_MARKER)) {
+    return;
+  }
+
+  const match = content.match(LOAD_EAGER_PATTERN);
+  if (!match || match.index === undefined) {
+    throw new Error(`Could not find a loadEager() function in ${scriptsJsPath}.`);
+  }
+
+  let depth = 1;
+  let index = match.index + match[0].length;
+  while (depth > 0 && index < content.length) {
+    if (content[index] === '{') depth += 1;
+    else if (content[index] === '}') depth -= 1;
+    index += 1;
+  }
+  if (depth !== 0) {
+    throw new Error(`Could not find the closing brace of loadEager() in ${scriptsJsPath}.`);
+  }
+  const closingBraceIndex = index - 1;
+
+  const updated = `${content.slice(0, closingBraceIndex)}${SIDEKICK_LIBRARY_LOADER_SNIPPET}\n${content.slice(closingBraceIndex)}`;
+  await writeFile(scriptsJsPath, updated, 'utf8');
+}
