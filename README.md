@@ -54,14 +54,17 @@ Opens Studio at `http://localhost:4111`. Go to **MCP Servers → pixelGuard → 
 
 | Tool | What it does | Example prompt |
 |---|---|---|
-| `aemVisualTestInstall` | Installs/scaffolds the visual-test environment in the target project. If that succeeds, asks whether to also set up a GitHub Actions workflow (runs visual tests on PRs) and/or a Husky pre-commit hook (runs them before each commit) | "Set up visual regression testing for this AEM project." |
+| `aemVisualTestInstall` | Installs/scaffolds the visual-test environment in the target project. If that succeeds, its response tells the agent to ask the user about a GitHub Actions workflow and/or a Husky pre-commit hook, and to call `installVisualTestAutomation` if they want either | "Set up visual regression testing for this AEM project." |
 | `generateVisualTests` | Regenerates Playwright specs from the Sidekick Library's current blocks | "I added a new block variation, regenerate the visual tests." |
-| `runVisualTests` | Runs the visual tests (all, or a single block) and lists every block/viewport test that passed or failed. `mode` controls what happens beyond that on failure: `quick` (default) just the pass/fail breakdown, `diagnose` adds each failure's error message and diff-image file path, `interactive` asks before showing diagnostics and before attempting a fix | "Run the visual tests and fix any issues." |
+| `runVisualTests` | Runs the visual tests (all, or a single block) and lists every block/viewport test that passed or failed. `mode` controls what happens beyond that on failure: `quick` (default) just the pass/fail breakdown, `diagnose` adds each failure's error message and diff-image file path, `interactive` adds the same plus a reminder to confirm with the user before attempting a fix | "Run the visual tests and fix any issues." |
 | `updateVisualSnapshots` | Updates the baseline screenshots (all, or a single block) | "Update the visual snapshots, the Columns redesign is intentional." |
+| `installVisualTestAutomation` | Sets up a GitHub Actions workflow and/or a Husky pre-commit hook in an already-installed project, based on explicit `githubWorkflow`/`huskyPreCommitHook` flags | "Add the GitHub Actions workflow and the pre-commit hook." |
 
 See [AGENTS.md](./AGENTS.md) for the full input schema and more example prompts per tool.
 
 > **Note:** the per-block pass/fail breakdown and diff-image paths in `runVisualTests` need Playwright's JSON reporter, which `aemVisualTestInstall` configures in the target project. If you installed pixel-guard into a project before this was added, re-run `aemVisualTestInstall` to pick it up.
+
+> **Note:** these tools deliberately don't use MCP elicitation (mid-tool-call interactive prompts) to ask yes/no questions — in practice, calls to it were silently failing through Claude Code, and the agent would improvise its own (worse, template-less) version of the feature instead of noticing anything had gone wrong. Anywhere a decision is needed, the tool's response instead tells the agent to ask the user through its own normal means, then call a follow-up tool with an explicit input reflecting the answer.
 
 ## Development
 

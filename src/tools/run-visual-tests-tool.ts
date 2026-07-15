@@ -1,7 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { runVisualTestsWorkflow } from '../workflows/run-visual-tests.js';
-import { askYesNo } from './elicit-yes-no.js';
 import { formatWorkflowResult, withReportLine } from './format-workflow-result.js';
 
 const MAX_ERROR_MESSAGE_LENGTH = 1500;
@@ -57,13 +56,13 @@ function buildDiagnostics(summary: string, output: DiagnosticSource): string {
 
 export const runVisualTestsTool = createTool({
   id: 'runVisualTests',
-  description: 'Runs the Playwright visual tests (all, or a single block when blockName is given). Use mode to control what happens on failure: "quick" (default) just reports pass/fail, "diagnose" also includes a per-block pass/fail breakdown with error details and diff image paths, "interactive" asks before revealing diagnostics and before attempting a fix.',
+  description: 'Runs the Playwright visual tests (all, or a single block when blockName is given). Use mode to control what happens on failure: "quick" (default) just reports pass/fail, "diagnose" also includes a per-block pass/fail breakdown with error details and diff image paths, "interactive" does the same as "diagnose" and additionally tells you to check with the user before attempting a fix.',
   inputSchema: z.object({
     blockName: z.string().optional().describe('Name of a single block to run visual tests for (e.g. "Columns"). Omit to run the full visual test suite.'),
     projectDir: z.string().optional().describe('Absolute path to the target AEM project. Defaults to CLAUDE_PROJECT_DIR or the server process\'s working directory when omitted -- required when calling this tool from a host with no notion of the target project (e.g. Mastra Studio).'),
-    mode: z.enum(['quick', 'diagnose', 'interactive']).optional().default('quick').describe('What to do if the tests fail: "quick" just reports pass/fail, "diagnose" includes a per-block pass/fail breakdown with error details and diff image paths, "interactive" asks (via MCP elicitation) before showing diagnostics and before attempting a fix.'),
+    mode: z.enum(['quick', 'diagnose', 'interactive']).optional().default('quick').describe('What to do if the tests fail: "quick" just reports pass/fail, "diagnose" includes a per-block pass/fail breakdown with error details and diff image paths, "interactive" includes the same plus an explicit reminder to confirm with the user before attempting a fix.'),
   }),
-  execute: async ({ blockName, projectDir, mode }, context) => {
+  execute: async ({ blockName, projectDir, mode }) => {
     const run = await runVisualTestsWorkflow.createRun();
     const result = await run.start({ inputData: { blockName, projectDir } });
     const output = result.status === 'success' ? result.result : undefined;
@@ -91,41 +90,16 @@ export const runVisualTestsTool = createTool({
       return { content: [{ type: 'text', text: withTestResults }] };
     }
 
-    if (mode === 'diagnose') {
-      return { content: [{ type: 'text', text: buildDiagnostics(summary, output) }] };
-    }
-
-    const mcp = context.mcp;
-    if (!mcp) {
-      // No elicitation support available (e.g. called outside the MCP protocol) -- just
-      // return everything we've got rather than silently skipping diagnostics.
-      return { content: [{ type: 'text', text: buildDiagnostics(summary, output) }] };
-    }
-
-    const wantsDiagnostics = await askYesNo(
-      mcp,
-      'Visual tests failed. Would you like to see the detailed error output to diagnose the failure?',
-      'runDiagnostics',
-    );
-    if (!wantsDiagnostics) {
-      return { content: [{ type: 'text', text: summary }] };
-    }
-
     const diagnosedText = buildDiagnostics(summary, output);
 
-    const wantsFix = await askYesNo(
-      mcp,
-      'Should an attempt be made to fix the underlying issue based on this error output?',
-      'attemptFix',
-    );
-    if (!wantsFix) {
+    if (mode === 'diagnose') {
       return { content: [{ type: 'text', text: diagnosedText }] };
     }
 
     return {
       content: [{
         type: 'text',
-        text: `${diagnosedText}\n\n---\n\nThe user has approved attempting a fix. Analyze the error output above (read the diff image paths listed, if useful) and fix the underlying issue in the project.`,
+        text: `${diagnosedText}\n\n---\n\nAsk the user whether they'd like you to attempt a fix based on this error output (and diff images, if useful) before making any changes.`,
       }],
     };
   },

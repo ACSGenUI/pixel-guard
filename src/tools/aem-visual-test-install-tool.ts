@@ -1,18 +1,15 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { aemVisualTestInstallWorkflow } from '../workflows/aem-visual-test-install.js';
-import { installGithubWorkflow, installHuskyHook } from '../workflows/post-install.js';
-import { resolveProjectDir } from '../workflows/project-dir.js';
-import { askMultipleYesNo } from './elicit-yes-no.js';
 import { formatWorkflowResult } from './format-workflow-result.js';
 
 export const aemVisualTestInstallTool = createTool({
   id: 'aemVisualTestInstall',
-  description: 'Installs/scaffolds the AEM Visual Test environment in the target project: checks prerequisites, copies required files, updates project config, installs dependencies, and generates visual tests. If the install succeeds, asks whether to also set up a GitHub Actions workflow and/or a Husky pre-commit hook to run the visual tests automatically.',
+  description: 'Installs/scaffolds the AEM Visual Test environment in the target project: checks prerequisites, copies required files, updates project config, installs dependencies, and generates visual tests. If the install succeeds, ask the user whether they also want a GitHub Actions workflow and/or a Husky pre-commit hook set up (the response tells you to), then call installVisualTestAutomation with their answer.',
   inputSchema: z.object({
     projectDir: z.string().optional().describe('Absolute path to the target AEM project. Defaults to CLAUDE_PROJECT_DIR or the server process\'s working directory when omitted.'),
   }),
-  execute: async ({ projectDir }, context) => {
+  execute: async ({ projectDir }) => {
     const run = await aemVisualTestInstallWorkflow.createRun();
     const result = await run.start({ inputData: { projectDir } });
     const output = result.status === 'success' ? result.result : undefined;
@@ -35,45 +32,10 @@ export const aemVisualTestInstallTool = createTool({
     const summary = formatWorkflowResult('AEM Visual Test Install', steps);
     const installSucceeded = steps.every((step) => step.success);
 
-    const mcp = context.mcp;
-    if (!installSucceeded || !mcp) {
-      return { content: [{ type: 'text', text: summary }] };
-    }
+    const text = installSucceeded
+      ? `${summary}\n\n---\n\nAsk the user whether they'd also like a GitHub Actions workflow (runs visual tests on pull requests) and/or a Husky pre-commit hook (runs visual tests before each commit) set up. If they want either, call installVisualTestAutomation with githubWorkflow and/or huskyPreCommitHook set to true -- don't hand-write these files yourself, that tool installs the real, tested templates.`
+      : summary;
 
-    const { githubWorkflow, huskyPreCommitHook } = await askMultipleYesNo(
-      mcp,
-      'Set up automatic visual test checks?',
-      {
-        githubWorkflow: 'GitHub Actions workflow (runs visual tests on pull requests)',
-        huskyPreCommitHook: 'Husky pre-commit hook (runs visual tests before each commit)',
-      },
-    );
-
-    if (!githubWorkflow && !huskyPreCommitHook) {
-      return { content: [{ type: 'text', text: summary }] };
-    }
-
-    const targetDir = resolveProjectDir(projectDir);
-    const extraLines: string[] = [];
-
-    if (githubWorkflow) {
-      try {
-        await installGithubWorkflow(targetDir);
-        extraLines.push('✅ **GitHub Actions workflow** — installed at .github/workflows/visual-tests.yaml.');
-      } catch (error) {
-        extraLines.push(`❌ **GitHub Actions workflow** — failed to install: ${(error as Error).message}`);
-      }
-    }
-
-    if (huskyPreCommitHook) {
-      try {
-        await installHuskyHook(targetDir);
-        extraLines.push('✅ **Husky pre-commit hook** — installed at .husky/pre-commit (added "prepare": "husky install" to package.json; run npm install to activate it).');
-      } catch (error) {
-        extraLines.push(`❌ **Husky pre-commit hook** — failed to install: ${(error as Error).message}`);
-      }
-    }
-
-    return { content: [{ type: 'text', text: `${summary}\n\n### Additional setup\n\n${extraLines.join('\n')}` }] };
+    return { content: [{ type: 'text', text }] };
   },
 });
