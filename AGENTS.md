@@ -20,9 +20,8 @@ Only pass `projectDir` explicitly when calling from a host that doesn't set `CLA
 
 1. `aemVisualTestInstall` — once, to set up the environment.
 2. `generateVisualTests` — whenever blocks/variations are added or changed in the Sidekick Library.
-3. `runVisualTests` / `runVisualTestsAndFix` — to check for regressions.
+3. `runVisualTests` — to check for regressions. Pick `mode` based on what the user asked for (see below).
 4. `updateVisualSnapshots` — only when a visual change is intentional, to accept it as the new baseline.
-5. `diagnoseVisualTests` — when a failure needs a closer look.
 
 ## Tools
 
@@ -49,14 +48,21 @@ Regenerates Playwright visual tests from the current Sidekick Library blocks. As
 
 ### `runVisualTests`
 
-Runs the Playwright visual tests — the full suite, or a single block when `blockName` is given.
+Runs the Playwright visual tests — the full suite, or a single block when `blockName` is given. The `mode` input controls what happens if the tests fail:
 
-**Input:** `blockName?` (string), `projectDir?` (string)
+- `quick` (default) — just reports pass/fail, no further detail.
+- `diagnose` — also includes the raw test output (assertion diffs, stack traces) plus up to 5 Playwright screenshot-diff images (`*-diff.png` from `tools/visual-tests/test-results/`) attached as image content, so the failure can be diagnosed and fixed.
+- `interactive` — asks (via MCP elicitation) whether to reveal the detailed error output and diff images, then asks again whether a fix should be attempted for the underlying issue. If approved, the tool's response instructs the agent to analyze the error output/images and fix it. Falls back to the same behavior as `diagnose` if the connected client doesn't support elicitation.
+
+**Input:** `blockName?` (string), `projectDir?` (string), `mode?` (`"quick" | "diagnose" | "interactive"`, default `"quick"`)
 
 **Example prompts:**
-- "Run the visual tests."
-- "Run visual tests for the Columns block."
-- "Check if the Hero block still renders correctly."
+- "Run the visual tests." → `mode: "quick"`
+- "Run visual tests for the Columns block." → `mode: "quick"`, `blockName: "Columns"`
+- "Run the visual tests and show me why they're failing." → `mode: "diagnose"`
+- "Diagnose the failing visual test for the Columns block." → `mode: "diagnose"`, `blockName: "Columns"`
+- "Run the visual tests and fix any issues." → `mode: "interactive"`
+- "Test and fix the visual regressions." → `mode: "interactive"`
 
 ### `updateVisualSnapshots`
 
@@ -68,24 +74,3 @@ Updates the visual snapshot baselines — the full suite, or a single block when
 - "Update the visual snapshots, the Columns redesign is intentional."
 - "Accept the new baseline for the Hero block."
 - "Update all the visual baselines."
-
-### `diagnoseVisualTests`
-
-Runs the visual tests and, if they fail, returns the raw test output (assertion diffs, stack traces) so the failure can be diagnosed and fixed.
-
-**Input:** `blockName?` (string), `projectDir?` (string)
-
-**Example prompts:**
-- "Run the visual tests and show me why they're failing."
-- "Diagnose the failing visual test for the Columns block."
-
-### `runVisualTestsAndFix`
-
-Runs the visual tests. If they fail, asks (via MCP elicitation) whether to reveal the detailed error output, then asks again whether a fix should be attempted for the underlying issue. If approved, the tool's response instructs the agent to analyze the error output and fix it.
-
-**Input:** `blockName?` (string), `projectDir?` (string)
-
-**Example prompts:**
-- "Run the visual tests and fix any issues."
-- "Test and fix the visual regressions."
-- "Run the tests — if something's broken, help me fix it."

@@ -7,6 +7,7 @@ import { blockSpecExists, listAvailableBlocks, resolveBlockSpecPath } from './bl
 import { startDevServer, stopDevServer } from './dev-server.js';
 import { resolveProjectDir } from './project-dir.js';
 import { getReportUrl, withReportUrl } from './report-server.js';
+import { findDiffImages } from './test-artifacts.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -70,6 +71,7 @@ export const runVisualTestsStep = createStep({
     message: z.string(),
     reportUrl: z.string().nullable(),
     errorOutput: z.string().nullable(),
+    diffImagePaths: z.array(z.string()),
   }),
   execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
@@ -81,6 +83,7 @@ export const runVisualTestsStep = createStep({
         message: 'Skipped running visual tests because prerequisites were not met.',
         reportUrl: null,
         errorOutput: null,
+        diffImagePaths: [],
       };
     }
 
@@ -96,6 +99,7 @@ export const runVisualTestsStep = createStep({
           message: withReportUrl('Ran all visual tests.', reportUrl),
           reportUrl,
           errorOutput: null,
+          diffImagePaths: [],
         };
       } catch (error) {
         const reportUrl = await getReportUrl(targetDir);
@@ -104,6 +108,7 @@ export const runVisualTestsStep = createStep({
           message: withReportUrl(`Visual tests failed: ${(error as Error).message}`, reportUrl),
           reportUrl,
           errorOutput: extractErrorOutput(error),
+          diffImagePaths: await findDiffImages(targetDir),
         };
       }
     }
@@ -118,6 +123,7 @@ export const runVisualTestsStep = createStep({
           : `No visual test found for block "${blockName}" (expected ${specPath}). No block tests have been generated yet -- run generate-visual-tests first.`,
         reportUrl: null,
         errorOutput: null,
+        diffImagePaths: [],
       };
     }
 
@@ -129,6 +135,7 @@ export const runVisualTestsStep = createStep({
         message: withReportUrl(`Ran visual tests for block "${blockName}".`, reportUrl),
         reportUrl,
         errorOutput: null,
+        diffImagePaths: [],
       };
     } catch (error) {
       const reportUrl = await getReportUrl(targetDir);
@@ -137,6 +144,7 @@ export const runVisualTestsStep = createStep({
         message: withReportUrl(`Visual tests for block "${blockName}" failed: ${(error as Error).message}`, reportUrl),
         errorOutput: extractErrorOutput(error),
         reportUrl,
+        diffImagePaths: await findDiffImages(targetDir),
       };
     }
   },
@@ -174,6 +182,7 @@ export const runVisualTestsWorkflow = createWorkflow({
     visualTestsRanMessage: z.string(),
     reportUrl: z.string().nullable(),
     errorOutput: z.string().nullable(),
+    diffImagePaths: z.array(z.string()),
     devServerStopped: z.boolean(),
     devServerStoppedMessage: z.string(),
   }),
@@ -195,6 +204,7 @@ export const runVisualTestsWorkflow = createWorkflow({
     visualTestsRanMessage: { step: runVisualTestsStep, path: 'message' },
     reportUrl: { step: runVisualTestsStep, path: 'reportUrl' },
     errorOutput: { step: runVisualTestsStep, path: 'errorOutput' },
+    diffImagePaths: { step: runVisualTestsStep, path: 'diffImagePaths' },
     devServerStopped: { step: stopDevServerAfterRunStep, path: 'devServerStopped' },
     devServerStoppedMessage: { step: stopDevServerAfterRunStep, path: 'message' },
   })
