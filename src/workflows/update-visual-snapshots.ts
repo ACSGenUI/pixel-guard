@@ -1,12 +1,26 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { execFile } from 'node:child_process';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { checkPrerequisitesStep, checkProjectStructureStep } from './aem-visual-test-install.js';
 import { blockSpecExists, listAvailableBlocks, resolveBlockSpecPath } from './block-spec.js';
 import { startDevServer, stopDevServer } from './dev-server.js';
+import { serveReport } from './report-server.js';
 
 const execFileAsync = promisify(execFile);
+
+// Playwright writes its HTML report here on every run, whether tests pass or fail;
+// serve it locally so the report is always reachable from the tool's response.
+async function getReportUrl(): Promise<string | null> {
+  const reportDir = join(process.cwd(), 'tools', 'visual-tests', 'playwright-report');
+  const report = await serveReport(reportDir);
+  return report?.url ?? null;
+}
+
+function withReportUrl(message: string, reportUrl: string | null): string {
+  return reportUrl ? `${message}\n\nPlaywright report: ${reportUrl}` : message;
+}
 
 // Bridges the workflow's { blockName? } input to checkPrerequisitesStep's empty inputSchema.
 // blockName itself is read downstream via getInitData(), not through this pass-through.
@@ -49,6 +63,7 @@ export const updateVisualSnapshotsStep = createStep({
   outputSchema: z.object({
     snapshotsUpdated: z.boolean(),
     message: z.string(),
+    reportUrl: z.string().nullable(),
   }),
   execute: async ({ getStepResult, getInitData }) => {
     const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
@@ -58,6 +73,7 @@ export const updateVisualSnapshotsStep = createStep({
       return {
         snapshotsUpdated: false,
         message: 'Skipped updating visual snapshots because prerequisites were not met.',
+        reportUrl: null,
       };
     }
 
@@ -66,9 +82,15 @@ export const updateVisualSnapshotsStep = createStep({
     if (!blockName) {
       try {
         await execFileAsync('npm', ['run', 'test:visual:update'], { cwd: process.cwd() });
-        return { snapshotsUpdated: true, message: 'Updated all visual snapshots.' };
+        const reportUrl = await getReportUrl();
+        return { snapshotsUpdated: true, message: withReportUrl('Updated all visual snapshots.', reportUrl), reportUrl };
       } catch (error) {
-        return { snapshotsUpdated: false, message: `Updating visual snapshots failed: ${(error as Error).message}` };
+        const reportUrl = await getReportUrl();
+        return {
+          snapshotsUpdated: false,
+          message: withReportUrl(`Updating visual snapshots failed: ${(error as Error).message}`, reportUrl),
+          reportUrl,
+        };
       }
     }
 
@@ -80,16 +102,24 @@ export const updateVisualSnapshotsStep = createStep({
         message: available.length > 0
           ? `No visual test found for block "${blockName}" (expected ${specPath}). Available blocks: ${available.join(', ')}.`
           : `No visual test found for block "${blockName}" (expected ${specPath}). No block tests have been generated yet -- run generate-visual-tests first.`,
+        reportUrl: null,
       };
     }
 
     try {
       await execFileAsync('npm', ['run', 'test:visual:update', '--', specPath], { cwd: process.cwd() });
-      return { snapshotsUpdated: true, message: `Updated visual snapshots for block "${blockName}".` };
+      const reportUrl = await getReportUrl();
+      return {
+        snapshotsUpdated: true,
+        message: withReportUrl(`Updated visual snapshots for block "${blockName}".`, reportUrl),
+        reportUrl,
+      };
     } catch (error) {
+      const reportUrl = await getReportUrl();
       return {
         snapshotsUpdated: false,
-        message: `Updating visual snapshots for block "${blockName}" failed: ${(error as Error).message}`,
+        message: withReportUrl(`Updating visual snapshots for block "${blockName}" failed: ${(error as Error).message}`, reportUrl),
+        reportUrl,
       };
     }
   },
@@ -124,6 +154,7 @@ export const updateVisualSnapshotsWorkflow = createWorkflow({
     devServerMessage: z.string(),
     snapshotsUpdated: z.boolean(),
     snapshotsUpdatedMessage: z.string(),
+    reportUrl: z.string().nullable(),
     devServerStopped: z.boolean(),
     devServerStoppedMessage: z.string(),
   }),
@@ -143,6 +174,7 @@ export const updateVisualSnapshotsWorkflow = createWorkflow({
     devServerMessage: { step: startDevServerForUpdateStep, path: 'message' },
     snapshotsUpdated: { step: updateVisualSnapshotsStep, path: 'snapshotsUpdated' },
     snapshotsUpdatedMessage: { step: updateVisualSnapshotsStep, path: 'message' },
+    reportUrl: { step: updateVisualSnapshotsStep, path: 'reportUrl' },
     devServerStopped: { step: stopDevServerAfterUpdateStep, path: 'devServerStopped' },
     devServerStoppedMessage: { step: stopDevServerAfterUpdateStep, path: 'message' },
   })
