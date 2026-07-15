@@ -20,5 +20,5 @@ export const VIEWPORTS = [
 // Sidekick Library configuration
 export const SIDEKICK_CONFIG = {
   JSONPath: '/tools/sidekick/library.json',
-  templatesPath: '/tools/sidekick/library/blocks/',
+  templatesPath: '/tools/sidekick/blocks/',
 };

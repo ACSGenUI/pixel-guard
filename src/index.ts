@@ -2,6 +2,7 @@ import { MCPServer } from '@mastra/mcp';
 import { echoTool } from './tools/echo-tool.js';
 import { aemVisualTestInstallWorkflow } from './workflows/aem-visual-test-install.js';
 import { generateVisualTestsWorkflow } from './workflows/generate-visual-tests.js';
+import { runVisualTestsWorkflow } from './workflows/run-visual-tests.js';
 
 const server = new MCPServer({
   name: 'pixel-guard',
@@ -10,6 +11,7 @@ const server = new MCPServer({
   workflows: {
     aemVisualTestInstall: aemVisualTestInstallWorkflow,
     generateVisualTests: generateVisualTestsWorkflow,
+    runVisualTests: runVisualTestsWorkflow,
   },
 });
 
