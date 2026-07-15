@@ -87,6 +87,31 @@ export const checkProjectStructureStep = createStep({
   },
 });
 
+export const copyRequiredFilesStep = createStep({
+  id: 'copy-required-files',
+  description: 'Copies the tools/ folder, .dockerignore, and .env.example into the target project, if prerequisites are met.',
+  inputSchema: checkProjectStructureStep.outputSchema,
+  outputSchema: z.object({
+    filesCopied: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ getStepResult }) => {
+    const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
+    const { projectStructureValid } = getStepResult(checkProjectStructureStep);
+    if (!dockerInstalled || !projectStructureValid) {
+      return {
+        filesCopied: false,
+        message: 'Skipped copying required files because prerequisites were not met.',
+      };
+    }
+    await copyRequiredFiles(ASSETS_SOURCE_DIR, process.cwd());
+    return {
+      filesCopied: true,
+      message: 'Copied tools/, .dockerignore, and .env.example to the project.',
+    };
+  },
+});
+
 export const aemVisualTestInstallWorkflow = createWorkflow({
   id: 'aem-visual-test-install',
   description: 'Install or Scaffold the AEM Visual Test environment in the current project. Check for prerequisites and provide instructions if not met. copy and modify the necessary files to set up the environment.',
@@ -96,14 +121,19 @@ export const aemVisualTestInstallWorkflow = createWorkflow({
     dockerMessage: z.string(),
     projectStructureValid: z.boolean(),
     projectStructureMessage: z.string(),
+    filesCopied: z.boolean(),
+    filesCopiedMessage: z.string(),
   }),
 })
   .then(checkPrerequisitesStep)
   .then(checkProjectStructureStep)
+  .then(copyRequiredFilesStep)
   .map({
     dockerInstalled: { step: checkPrerequisitesStep, path: 'dockerInstalled' },
     dockerMessage: { step: checkPrerequisitesStep, path: 'message' },
     projectStructureValid: { step: checkProjectStructureStep, path: 'projectStructureValid' },
     projectStructureMessage: { step: checkProjectStructureStep, path: 'message' },
+    filesCopied: { step: copyRequiredFilesStep, path: 'filesCopied' },
+    filesCopiedMessage: { step: copyRequiredFilesStep, path: 'message' },
   })
   .commit();
