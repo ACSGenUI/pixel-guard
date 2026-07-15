@@ -52,17 +52,16 @@ Opens Studio at `http://localhost:4111`. Go to **MCP Servers → pixelGuard → 
 
 ## Tools
 
-| Tool | What it does |
-|---|---|
-| `aemVisualTestInstall` | Installs/scaffolds the visual-test environment in the target project |
-| `generateVisualTests` | Regenerates Playwright specs from the Sidekick Library's current blocks |
-| `runVisualTests` | Runs the visual tests (all, or a single block) |
-| `updateVisualSnapshots` | Updates the baseline screenshots (all, or a single block) |
-| `diagnoseVisualTests` | Runs the tests and returns full failure output for debugging |
-| `runVisualTestsAndFix` | Runs the tests, then interactively asks whether to diagnose and whether to attempt a fix |
-| `echo` | Echoes back a message; useful for verifying the MCP connection |
+| Tool | What it does | Example prompt |
+|---|---|---|
+| `aemVisualTestInstall` | Installs/scaffolds the visual-test environment in the target project | "Set up visual regression testing for this AEM project." |
+| `generateVisualTests` | Regenerates Playwright specs from the Sidekick Library's current blocks | "I added a new block variation, regenerate the visual tests." |
+| `runVisualTests` | Runs the visual tests (all, or a single block) | "Run the visual tests for the Columns block." |
+| `updateVisualSnapshots` | Updates the baseline screenshots (all, or a single block) | "Update the visual snapshots, the Columns redesign is intentional." |
+| `diagnoseVisualTests` | Runs the tests and returns full failure output for debugging | "Run the visual tests and show me why they're failing." |
+| `runVisualTestsAndFix` | Runs the tests, then interactively asks whether to diagnose and whether to attempt a fix | "Run the visual tests and fix any issues." |
 
-See [AGENTS.md](./AGENTS.md) for detailed tool docs and example prompts.
+See [AGENTS.md](./AGENTS.md) for the full input schema and more example prompts per tool.
 
 ## Development
 
