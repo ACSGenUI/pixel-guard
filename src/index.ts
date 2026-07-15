@@ -3,6 +3,7 @@ import { echoTool } from './tools/echo-tool.js';
 import { aemVisualTestInstallWorkflow } from './workflows/aem-visual-test-install.js';
 import { generateVisualTestsWorkflow } from './workflows/generate-visual-tests.js';
 import { runVisualTestsWorkflow } from './workflows/run-visual-tests.js';
+import { updateVisualSnapshotsWorkflow } from './workflows/update-visual-snapshots.js';
 
 const server = new MCPServer({
   name: 'pixel-guard',
@@ -12,6 +13,7 @@ const server = new MCPServer({
     aemVisualTestInstall: aemVisualTestInstallWorkflow,
     generateVisualTests: generateVisualTestsWorkflow,
     runVisualTests: runVisualTestsWorkflow,
+    updateVisualSnapshots: updateVisualSnapshotsWorkflow,
   },
 });
 
