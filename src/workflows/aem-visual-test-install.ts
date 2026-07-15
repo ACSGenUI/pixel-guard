@@ -5,6 +5,8 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
+import { mergePackageJson, appendMissingLines } from './update-project-config.js';
+import { scripts, dependenciesToAdd, devDependenciesToAdd, gitignoreLines, hlxignoreLines } from '../../aem-visual-checker/changes.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -112,6 +114,38 @@ export const copyRequiredFilesStep = createStep({
   },
 });
 
+export const updateProjectConfigStep = createStep({
+  id: 'update-project-config',
+  description: 'Merges visual-test npm scripts/dependencies into package.json and appends ignore entries to .gitignore and .hlxignore, if prerequisites are met.',
+  inputSchema: copyRequiredFilesStep.outputSchema,
+  outputSchema: z.object({
+    configUpdated: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async ({ getStepResult }) => {
+    const { dockerInstalled } = getStepResult(checkPrerequisitesStep);
+    const { projectStructureValid } = getStepResult(checkProjectStructureStep);
+    const { filesCopied } = getStepResult(copyRequiredFilesStep);
+    if (!dockerInstalled || !projectStructureValid || !filesCopied) {
+      return {
+        configUpdated: false,
+        message: 'Skipped updating project config because prerequisites were not met.',
+      };
+    }
+    await mergePackageJson(process.cwd(), {
+      scripts,
+      dependencies: dependenciesToAdd,
+      devDependencies: devDependenciesToAdd,
+    });
+    await appendMissingLines(join(process.cwd(), '.gitignore'), gitignoreLines);
+    await appendMissingLines(join(process.cwd(), '.hlxignore'), hlxignoreLines);
+    return {
+      configUpdated: true,
+      message: 'Updated package.json, .gitignore, and .hlxignore.',
+    };
+  },
+});
+
 export const aemVisualTestInstallWorkflow = createWorkflow({
   id: 'aem-visual-test-install',
   description: 'Install or Scaffold the AEM Visual Test environment in the current project. Check for prerequisites and provide instructions if not met. copy and modify the necessary files to set up the environment.',
@@ -123,11 +157,14 @@ export const aemVisualTestInstallWorkflow = createWorkflow({
     projectStructureMessage: z.string(),
     filesCopied: z.boolean(),
     filesCopiedMessage: z.string(),
+    configUpdated: z.boolean(),
+    configUpdatedMessage: z.string(),
   }),
 })
   .then(checkPrerequisitesStep)
   .then(checkProjectStructureStep)
   .then(copyRequiredFilesStep)
+  .then(updateProjectConfigStep)
   .map({
     dockerInstalled: { step: checkPrerequisitesStep, path: 'dockerInstalled' },
     dockerMessage: { step: checkPrerequisitesStep, path: 'message' },
@@ -135,5 +172,7 @@ export const aemVisualTestInstallWorkflow = createWorkflow({
     projectStructureMessage: { step: checkProjectStructureStep, path: 'message' },
     filesCopied: { step: copyRequiredFilesStep, path: 'filesCopied' },
     filesCopiedMessage: { step: copyRequiredFilesStep, path: 'message' },
+    configUpdated: { step: updateProjectConfigStep, path: 'configUpdated' },
+    configUpdatedMessage: { step: updateProjectConfigStep, path: 'message' },
   })
   .commit();
