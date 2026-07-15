@@ -16,6 +16,126 @@ async function checkServer() {
   }
 }
 
+// Fetch the last Playwright run's structured results (see server.js /api/results)
+async function fetchResultsSummary() {
+  try {
+    const response = await fetch(`http://localhost:3001/api/results?t=${Date.now()}`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to fetch results summary:', error);
+    return null;
+  }
+}
+
+// Recursively flatten Playwright's suites/specs tree into a flat list of { title, ok }
+function flattenSpecs(suites, acc = []) {
+  (suites || []).forEach((suite) => {
+    (suite.specs || []).forEach((spec) => {
+      acc.push({ title: spec.title, ok: spec.ok });
+    });
+    flattenSpecs(suite.suites, acc);
+  });
+  return acc;
+}
+
+function buildResultsModal(results) {
+  const modal = document.createElement('dialog');
+  modal.style.padding = '20px';
+  modal.style.borderRadius = '8px';
+  modal.style.border = '1px solid #ccc';
+  modal.style.maxWidth = '600px';
+  modal.style.width = '90vw';
+  modal.style.maxHeight = '80vh';
+  modal.style.overflowY = 'auto';
+
+  const header = document.createElement('div');
+  header.style.display = 'flex';
+  header.style.justifyContent = 'space-between';
+  header.style.alignItems = 'center';
+  header.style.marginBottom = '16px';
+
+  const heading = document.createElement('h2');
+  heading.style.margin = '0';
+  heading.textContent = 'Test Results';
+
+  const closeButton = document.createElement('button');
+  closeButton.textContent = 'Close';
+  closeButton.style.padding = '8px 16px';
+  closeButton.style.background = '#0265dc';
+  closeButton.style.color = '#fff';
+  closeButton.style.border = 'none';
+  closeButton.style.borderRadius = '4px';
+  closeButton.style.cursor = 'pointer';
+  closeButton.addEventListener('click', () => {
+    modal.close();
+    modal.remove();
+  });
+
+  header.append(heading, closeButton);
+  modal.append(header);
+
+  if (!results) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No test results available.';
+    modal.append(empty);
+  } else {
+    const { stats } = results;
+    const summary = document.createElement('p');
+    summary.style.fontWeight = 'bold';
+    summary.textContent = `${stats.expected} passed, ${stats.unexpected} failed, ${stats.skipped} skipped, ${stats.flaky} flaky`;
+    modal.append(summary);
+
+    const list = document.createElement('ul');
+    list.style.listStyle = 'none';
+    list.style.padding = '0';
+    list.style.margin = '0 0 16px 0';
+
+    flattenSpecs(results.suites).forEach((spec) => {
+      const item = document.createElement('li');
+      item.style.padding = '6px 0';
+      item.style.borderBottom = '1px solid #eee';
+      item.style.display = 'flex';
+      item.style.alignItems = 'center';
+      item.style.gap = '8px';
+
+      const badge = document.createElement('span');
+      badge.textContent = spec.ok ? 'PASS' : 'FAIL';
+      badge.style.color = '#fff';
+      badge.style.backgroundColor = spec.ok ? '#2e7d32' : '#d32f2f';
+      badge.style.borderRadius = '4px';
+      badge.style.padding = '2px 8px';
+      badge.style.fontSize = '12px';
+      badge.style.fontWeight = 'bold';
+
+      const title = document.createElement('span');
+      title.textContent = spec.title;
+
+      item.append(badge, title);
+      list.append(item);
+    });
+
+    modal.append(list);
+  }
+
+  const reportButton = document.createElement('button');
+  reportButton.textContent = 'View Full Report';
+  reportButton.style.padding = '8px 16px';
+  reportButton.style.background = '#0265dc';
+  reportButton.style.color = '#fff';
+  reportButton.style.border = 'none';
+  reportButton.style.borderRadius = '4px';
+  reportButton.style.cursor = 'pointer';
+  reportButton.addEventListener('click', () => {
+    // This click carries its own user-activation, so it isn't subject to the
+    // popup-blocker issue that hit the previous auto-open-on-run behavior.
+    window.open(`http://localhost:3001/playwright-report/index.html?t=${Date.now()}`, '_blank');
+  });
+  modal.append(reportButton);
+
+  return modal;
+}
+
 async function initializeVisualTest() {
   // Remove existing elements if they exist
 
@@ -155,18 +275,6 @@ async function initializeVisualTest() {
       const componentName = window.parent?.window?.location?.search?.split('path=')[1]?.split('&')[0]?.split('/')?.pop();
       console.log(componentName, 'componentName');
 
-      // Create modal outside try-catch so it's available for both success and error cases
-      const modal = document.createElement('dialog');
-      modal.style.padding = '20px';
-      modal.style.borderRadius = '8px';
-      modal.style.border = '1px solid #ccc';
-      modal.style.maxWidth = '90vw';
-      modal.style.maxHeight = '90vh';
-      modal.style.width = '90vw';
-      modal.style.height = '90vh';
-      modal.style.display = 'flex';
-      modal.style.flexDirection = 'column';
-
       try {
         const response = await fetch('http://localhost:3001/api/run-visual-test', {
           method: 'POST',
@@ -188,43 +296,10 @@ async function initializeVisualTest() {
       } catch (error) {
         console.error(error, 'Test failed');
       } finally {
-        // Show modal with test results
-        const reportTimestamp = new Date().getTime();
-        modal.innerHTML = `
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="margin: 0; color: #d32f2f;">Test Results</h2>
-            <button id="closeModal" style="
-              padding: 8px 16px;
-              background: #0265dc;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-            ">Close</button>
-          </div>
-          <div style="flex: 1; overflow: hidden;">
-            <iframe
-              src="http://localhost:3001/playwright-report/index.html?t=${reportTimestamp}"
-              style="
-                width: 100%;
-                height: 100%;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                background-color: white;
-              "
-              title="Playwright Report"
-              onerror="this.srcdoc='<div style="padding: 20px; text-align: center;"><h3>Report not available</h3><p>The test report could not be loaded. Please check if the tests completed successfully.</p></div>'"
-            ></iframe>
-          </div>
-        `;
+        const results = await fetchResultsSummary();
+        const modal = buildResultsModal(results);
         document.body.appendChild(modal);
         modal.showModal();
-
-        // Add event listener for close button
-        modal.querySelector('#closeModal').addEventListener('click', () => {
-          modal.close();
-          modal.remove();
-        });
 
         // Reset button state
         vtestButton.disabled = false;

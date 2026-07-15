@@ -112,6 +112,18 @@ app.get('/port.txt', (req, res) => {
   }
 });
 
+// Test results summary endpoint
+app.get('/api/results', (req, res) => {
+  const resultsPath = path.join(__dirname, 'test-results', 'results.json');
+  try {
+    const raw = fs.readFileSync(resultsPath, 'utf8');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(raw);
+  } catch (error) {
+    res.status(404).json({ error: 'No results available' });
+  }
+});
+
 // Run visual test endpoint
 app.post('/api/run-visual-test', async (req, res) => {
   const { command, component } = req.body;
