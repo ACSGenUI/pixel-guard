@@ -68,6 +68,18 @@ test('generateReportHtml renders an ignored-only group as ignored and an Unattri
   assert.match(html, /home\/desktop\/region-3-diff\.png/);
 });
 
+test('generateReportHtml nests location, breakpoint, block, and region as collapsible accordions with an expand/collapse control', () => {
+  const html = generateReportHtml(RUN_SUMMARY);
+
+  assert.match(html, /<details class="pair"/);
+  assert.match(html, /<details class="viewport/);
+  assert.match(html, /<details class="group/);
+  assert.match(html, /<details class="region/);
+  // Expand/collapse-all control present.
+  assert.match(html, /data-action="expand"/);
+  assert.match(html, /data-action="collapse"/);
+});
+
 test('generateReportHtml escapes HTML-sensitive characters in URLs', () => {
   const withHtmlChars = {
     ...RUN_SUMMARY,
