@@ -70,9 +70,18 @@ export async function collectElementDetails(page, selectors) {
   return page.evaluate(({ selectors: sels, styleProps }) => sels.map((selector) => {
     const el = document.querySelector(selector);
     if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const boundingBox = {
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
     const computed = window.getComputedStyle(el);
     const computedStyle = {};
     styleProps.forEach((prop) => { computedStyle[prop] = computed[prop]; });
-    return { selector, outerHTML: el.outerHTML.slice(0, 2000), computedStyle };
+    return {
+      selector, boundingBox, outerHTML: el.outerHTML.slice(0, 2000), computedStyle,
+    };
   }).filter(Boolean), { selectors, styleProps: CURATED_STYLE_PROPERTIES });
 }

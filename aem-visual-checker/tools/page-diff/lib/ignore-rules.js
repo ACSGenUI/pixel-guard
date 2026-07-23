@@ -28,7 +28,7 @@ export function matchRulesForContext(rules, { pairSlug, liveUrl, viewportLabel }
       matchesPair = wildcardToRegExp(rule.urlPattern).test(liveUrl);
     }
     if (!matchesPair) return false;
-    if (rule.viewport && rule.viewport !== viewportLabel) return false;
+    if (rule.viewport && rule.viewport.toLowerCase() !== viewportLabel.toLowerCase()) return false;
     return true;
   });
 }

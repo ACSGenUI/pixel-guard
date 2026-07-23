@@ -48,6 +48,12 @@ test('matchRulesForContext excludes rules scoped to a different viewport', () =>
   assert.deepEqual(matched, []);
 });
 
+test('matchRulesForContext matches viewport case-insensitively', () => {
+  const rules = [{ pairSlug: 'home', viewport: 'mobile', selector: '.promo' }];
+  const matched = matchRulesForContext(rules, { pairSlug: 'home', liveUrl: 'https://live.example.com/home', viewportLabel: 'Mobile' });
+  assert.deepEqual(matched, [{ pairSlug: 'home', viewport: 'mobile', selector: '.promo' }]);
+});
+
 test('overlapRatio returns 1 when the rule box fully covers the region', () => {
   const ratio = overlapRatio({ x: 10, y: 10, width: 10, height: 10 }, { x: 0, y: 0, width: 100, height: 100 });
   assert.equal(ratio, 1);
