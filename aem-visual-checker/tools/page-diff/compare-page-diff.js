@@ -9,6 +9,7 @@ import {
   loadIgnoreRules, matchRulesForContext, resolveIgnoreBoxes, applyIgnoreStatus,
 } from './lib/ignore-rules.js';
 import { cropPng } from './lib/crop-images.js';
+import { collectBlockBoxes, assignRegionToBlock } from './lib/dom-capture.js';
 import { generateReportHtml } from './lib/report-html.js';
 import { VIEWPORTS, THRESHOLDS } from './config.js';
 
@@ -59,6 +60,7 @@ export async function runCompare({ mappingFile, targetDir }) {
             pairSlug: pair.pairSlug, liveUrl: pair.liveUrl, viewportLabel: viewport.label,
           });
           const ignoredBoxes = await resolveIgnoreBoxes(migratedPage, applicableRules);
+          const blockBoxes = await collectBlockBoxes(migratedPage);
           const statusedRegions = applyIgnoreStatus(regions, ignoredBoxes, THRESHOLDS.ignoreOverlapRatio);
 
           await writeFile(join(viewportDir, 'live.png'), liveBuffer);
@@ -87,6 +89,7 @@ export async function runCompare({ mappingFile, targetDir }) {
               diffPixelCount: region.diffPixelCount,
               status: region.status,
               matchedRule: region.matchedRule,
+              block: assignRegionToBlock(region, blockBoxes),
               elements: null,
               crops: {
                 live: `${relDir}/region-${index}-live.png`,
