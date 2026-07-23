@@ -50,3 +50,21 @@ test('copyPageDiffFiles copies tools/page-diff/ (and only that) from source to t
     await rm(targetDir, { recursive: true, force: true });
   }
 });
+
+test('copyPageDiffFiles does not copy the installer-internal changes.js manifest', async () => {
+  const sourceDir = await makeTempDir();
+  const targetDir = await makeTempDir();
+  try {
+    await mkdir(join(sourceDir, 'tools', 'page-diff'), { recursive: true });
+    await writeFile(join(sourceDir, 'tools', 'page-diff', 'compare-page-diff.js'), '// script');
+    await writeFile(join(sourceDir, 'tools', 'page-diff', 'changes.js'), 'export const scripts = {};');
+
+    await copyPageDiffFiles(sourceDir, targetDir);
+
+    await access(join(targetDir, 'tools', 'page-diff', 'compare-page-diff.js'));
+    await assert.rejects(() => access(join(targetDir, 'tools', 'page-diff', 'changes.js')));
+  } finally {
+    await rm(sourceDir, { recursive: true, force: true });
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});

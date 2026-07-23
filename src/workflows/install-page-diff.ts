@@ -24,10 +24,11 @@ export async function checkPackageJsonExists(targetDir: string): Promise<boolean
 }
 
 export async function copyPageDiffFiles(sourceDir: string, targetDir: string): Promise<void> {
+  const manifestPath = join(sourceDir, 'tools', 'page-diff', 'changes.js');
   await cp(join(sourceDir, 'tools', 'page-diff'), join(targetDir, 'tools', 'page-diff'), {
     recursive: true,
     force: true,
-    filter: (source) => basename(source) !== '.DS_Store',
+    filter: (source) => basename(source) !== '.DS_Store' && source !== manifestPath,
   });
 }
 
