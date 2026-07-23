@@ -18,6 +18,15 @@ const elementSchema = z.object({
   outerHTML: z.string(),
 });
 
+const blockSchema = z.object({
+  name: z.string(),
+  selector: z.string(),
+  kind: z.enum(['block', 'section', 'landmark']),
+  boundingBox: z.object({
+    x: z.number(), y: z.number(), width: z.number(), height: z.number(),
+  }),
+});
+
 const regionSchema = z.object({
   index: z.number(),
   x: z.number(),
@@ -27,6 +36,7 @@ const regionSchema = z.object({
   diffPixelCount: z.number(),
   status: z.enum(['failed', 'ignored']),
   matchedRule: z.record(z.string(), z.unknown()).nullable(),
+  block: blockSchema.nullable().optional(),
   elements: z.array(elementSchema).nullable(),
   crops: z.object({ live: z.string(), migrated: z.string(), diff: z.string() }),
 });
