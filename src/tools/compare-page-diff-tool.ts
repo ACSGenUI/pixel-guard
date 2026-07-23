@@ -3,6 +3,18 @@ import { z } from 'zod';
 import { comparePageDiffWorkflow, runSummarySchema } from '../workflows/compare-page-diff.js';
 
 type RunSummary = z.infer<typeof runSummarySchema>;
+type Region = RunSummary['pairs'][number]['viewports'][number]['regions'][number];
+
+function blockLabel(region: Region): string {
+  const block = region.block ?? null;
+  if (!block) return 'Unattributed';
+  return block.kind === 'block' ? `Block "${block.name}"` : `${block.kind} "${block.name}"`;
+}
+
+function groupKey(region: Region): string {
+  const block = region.block ?? null;
+  return block ? `${block.kind}:${block.selector}` : '__unattributed__';
+}
 
 function formatSummary(summary: RunSummary): string {
   const lines: string[] = [`## Compare Page Diff (run ${summary.runId})`, ''];
@@ -19,9 +31,28 @@ function formatSummary(summary: RunSummary): string {
         const { liveHeight, migratedHeight, deltaPx } = viewport.pageLengthMismatch;
         lines.push(`   Page length mismatch: live ${liveHeight}px vs migrated ${migratedHeight}px (Δ${deltaPx}px)`);
       }
-      for (const region of viewport.regions.filter((r) => r.status === 'failed')) {
-        lines.push(`   Region ${region.index}: ${region.diffPixelCount}px diff at (${region.x},${region.y}) ${region.width}x${region.height} — crops: ${region.crops.live}, ${region.crops.migrated}, ${region.crops.diff}`);
+
+      const failed = viewport.regions.filter((r) => r.status === 'failed');
+      const groups = new Map<string, { label: string; regions: Region[] }>();
+      for (const region of failed) {
+        const key = groupKey(region);
+        if (!groups.has(key)) groups.set(key, { label: blockLabel(region), regions: [] });
+        groups.get(key)!.regions.push(region);
       }
+      // Unattributed last.
+      const ordered = [...groups.values()].sort((a, b) => {
+        if (a.label === 'Unattributed') return 1;
+        if (b.label === 'Unattributed') return -1;
+        return 0;
+      });
+      for (const group of ordered) {
+        const totalPx = group.regions.reduce((sum, r) => sum + r.diffPixelCount, 0);
+        lines.push(`   ${group.label} — ${group.regions.length} region(s), ${totalPx}px`);
+        for (const region of group.regions) {
+          lines.push(`      Region ${region.index}: ${region.diffPixelCount}px at (${region.x},${region.y}) ${region.width}x${region.height} — crops: ${region.crops.live}, ${region.crops.migrated}, ${region.crops.diff}`);
+        }
+      }
+
       const ignoredCount = viewport.regions.filter((r) => r.status === 'ignored').length;
       if (ignoredCount > 0) {
         lines.push(`   ${ignoredCount} region(s) ignored per tools/page-diff/ignore.json`);

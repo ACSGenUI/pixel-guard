@@ -15,7 +15,8 @@ function formatSummary(summary: RunSummary): string {
       if (failedRegions.length === 0) continue;
       lines.push(`${viewport.viewportLabel}:`);
       for (const region of failedRegions) {
-        lines.push(`  Region ${region.index} (${region.diffPixelCount}px):`);
+        const owner = region.block ? (region.block.kind === 'block' ? `Block "${region.block.name}"` : `${region.block.kind} "${region.block.name}"`) : 'Unattributed';
+        lines.push(`  ${owner} — Region ${region.index} (${region.diffPixelCount}px):`);
         for (const element of region.elements ?? []) {
           lines.push(`    - ${element.selector} — ${JSON.stringify(element.computedStyle)}`);
         }
