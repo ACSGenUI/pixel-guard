@@ -59,6 +59,9 @@ Opens Studio at `http://localhost:4111`. Go to **MCP Servers → pixelGuard → 
 | `runVisualTests` | Runs the visual tests (all, or a single block) and lists every block/viewport test that passed or failed. `mode` controls what happens beyond that on failure: `quick` (default) just the pass/fail breakdown, `diagnose` adds each failure's error message and diff-image file path, `interactive` adds the same plus a reminder to confirm with the user before attempting a fix | "Run the visual tests and fix any issues." |
 | `updateVisualSnapshots` | Updates the baseline screenshots (all, or a single block) | "Update the visual snapshots, the Columns redesign is intentional." |
 | `installVisualTestAutomation` | Sets up a GitHub Actions workflow and/or a Husky pre-commit hook in an already-installed project, based on explicit `githubWorkflow`/`huskyPreCommitHook` flags | "Add the GitHub Actions workflow and the pre-commit hook." |
+| `installPageDiff` | Installs the page-diff environment in the target project (copies `tools/page-diff/`, adds its npm scripts/dependencies, runs `npm install`) -- independent of `aemVisualTestInstall` | "Set up page-diff for this project." |
+| `comparePageDiff` | Screenshots each live/migrated URL pair (from a CSV/JSON mapping file) at every configured viewport, pixel-diffs them, and reports which page regions differ, with cropped before/after/diff images and a browsable HTML report | "Compare the live and migrated homepage and show me what's different." |
+| `localizePageDiff` | For each failing region from a `comparePageDiff` run, finds the overlapping migrated-page DOM element(s) and reports their selector, computed style, and outerHTML | "Localize the diffs from that last comparison to the actual elements." |
 
 See [AGENTS.md](./AGENTS.md) for the full input schema and more example prompts per tool.
 

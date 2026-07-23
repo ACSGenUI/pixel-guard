@@ -101,3 +101,33 @@ Sets up automatic visual-test runs in a project already installed via `aemVisual
 - "Add the GitHub Actions workflow." → `githubWorkflow: true`
 - "Set up the pre-commit hook too." → `huskyPreCommitHook: true`
 - "Set up both CI and the pre-commit hook." → `githubWorkflow: true`, `huskyPreCommitHook: true`
+
+### `installPageDiff`
+
+Installs the page-diff environment in the target project: copies `tools/page-diff/`, merges its npm scripts and dependencies (`playwright`, `pixelmatch`, `pngjs`) into `package.json`, and runs `npm install`. Fully independent of `aemVisualTestInstall` -- does not require the block-testing suite to be installed, and vice versa. No Docker or dev server involved (unlike `aemVisualTestInstall`), since page-diff only screenshots already-reachable URLs.
+
+**Input:** `projectDir?` (string)
+
+**Example prompts:**
+- "Set up page-diff for this project."
+- "Install the URL comparison tool."
+
+### `comparePageDiff`
+
+Screenshots each `{liveUrl, migratedUrl}` pair from a mapping file at every configured viewport (mobile/tablet/desktop/large), pixel-diffs the two full-page screenshots, and clusters differences into regions. Produces cropped live/migrated/diff images per region and a browsable HTML report. Supports an ignore mechanism (`tools/page-diff/ignore.json`, user-authored) for known/expected differences, scoped by pair and/or viewport, matched by CSS selector or explicit pixel region. Requires `installPageDiff` to have been run first.
+
+**Input:** `mappingFile` (string, path to a CSV or JSON file of `{liveUrl, migratedUrl}` pairs), `projectDir?` (string)
+
+**Example prompts:**
+- "Compare the live and migrated homepage and show me what's different."
+- "Run a page diff for the URLs in migration-urls.csv."
+
+### `localizePageDiff`
+
+For each failing region from a `comparePageDiff` run, navigates to the migrated page and finds the overlapping DOM element(s), attaching their selector, curated computed style (position, size, color, background, font, padding/margin, display, transform, opacity, z-index), and outerHTML — turning a blurry diff crop into "this `.hero > h1` lost its top padding." Only inspects the migrated page's DOM, since that's the page whose code can actually be fixed.
+
+**Input:** `runId?` (string, an existing `comparePageDiff` run), `mappingFile?` (string, run a fresh comparison first if `runId` is omitted), `projectDir?` (string)
+
+**Example prompts:**
+- "Localize the diffs from that last comparison to the actual elements."
+- "Run a fresh page diff on urls.csv and localize the results."
