@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { generateReportHtml } from './report-html.js';
 
 const RUN_SUMMARY = {
-  runId: '2026-07-21T10-00-00-000Z',
-  createdAt: '2026-07-21T10:00:00.000Z',
+  runId: '2026-07-23T10-00-00-000Z',
+  createdAt: '2026-07-23T10:00:00.000Z',
   pairs: [{
     pairSlug: 'home',
     liveUrl: 'https://live.example.com/',
@@ -18,29 +18,54 @@ const RUN_SUMMARY = {
         {
           index: 0, x: 10, y: 10, width: 100, height: 50, diffPixelCount: 500,
           status: 'failed', matchedRule: null, elements: null,
+          block: { name: 'hero', selector: 'main > div:nth-of-type(1) > div', kind: 'block', boundingBox: { x: 0, y: 0, width: 1200, height: 400 } },
           crops: { live: 'home/desktop/region-0-live.png', migrated: 'home/desktop/region-0-migrated.png', diff: 'home/desktop/region-0-diff.png' },
         },
         {
-          index: 1, x: 500, y: 500, width: 20, height: 20, diffPixelCount: 30,
-          status: 'ignored', matchedRule: { selector: '.promo' }, elements: null,
+          index: 1, x: 20, y: 20, width: 30, height: 30, diffPixelCount: 120,
+          status: 'failed', matchedRule: null, elements: null,
+          block: { name: 'hero', selector: 'main > div:nth-of-type(1) > div', kind: 'block', boundingBox: { x: 0, y: 0, width: 1200, height: 400 } },
           crops: { live: 'home/desktop/region-1-live.png', migrated: 'home/desktop/region-1-migrated.png', diff: 'home/desktop/region-1-diff.png' },
+        },
+        {
+          index: 2, x: 500, y: 900, width: 40, height: 40, diffPixelCount: 200,
+          status: 'ignored', matchedRule: { selector: '.promo' }, elements: null,
+          block: { name: 'columns', selector: 'main > div:nth-of-type(2) > div', kind: 'block', boundingBox: { x: 0, y: 800, width: 1200, height: 300 } },
+          crops: { live: 'home/desktop/region-2-live.png', migrated: 'home/desktop/region-2-migrated.png', diff: 'home/desktop/region-2-diff.png' },
+        },
+        {
+          index: 3, x: 700, y: 1500, width: 25, height: 25, diffPixelCount: 90,
+          status: 'failed', matchedRule: null, elements: null,
+          block: null,
+          crops: { live: 'home/desktop/region-3-live.png', migrated: 'home/desktop/region-3-migrated.png', diff: 'home/desktop/region-3-diff.png' },
         },
       ],
     }],
   }],
 };
 
-test('generateReportHtml includes the pair, viewport, region crops, and ignored-rule marker', () => {
+test('generateReportHtml groups regions by their owning block and shows both crops of the hero group', () => {
   const html = generateReportHtml(RUN_SUMMARY);
 
-  assert.match(html, /home/);
-  assert.match(html, /https:\/\/live\.example\.com\//);
-  assert.match(html, /Desktop/);
-  assert.match(html, /home\/desktop\/region-0-live\.png/);
-  assert.match(html, /home\/desktop\/region-0-migrated\.png/);
+  // Block group headers.
+  assert.match(html, /hero/);
+  assert.match(html, /columns/);
+  // Both hero regions' crops appear under the one hero group.
   assert.match(html, /home\/desktop\/region-0-diff\.png/);
-  assert.match(html, /ignored/i);
-  assert.match(html, /\.promo/);
+  assert.match(html, /home\/desktop\/region-1-diff\.png/);
+  // The two hero regions are grouped: "hero" appears once as a group header, not once per region.
+  const heroHeaderMatches = html.match(/data-group-name="hero"/g) ?? [];
+  assert.equal(heroHeaderMatches.length, 1);
+});
+
+test('generateReportHtml renders an ignored-only group as ignored and an Unattributed group for block-less regions', () => {
+  const html = generateReportHtml(RUN_SUMMARY);
+
+  // columns group has only an ignored region -> group marked ignored.
+  assert.match(html, /class="group[^"]*\bignored\b[^"]*"[^>]*data-group-name="columns"/);
+  // Region 3 has no block -> Unattributed group present.
+  assert.match(html, /Unattributed/);
+  assert.match(html, /home\/desktop\/region-3-diff\.png/);
 });
 
 test('generateReportHtml escapes HTML-sensitive characters in URLs', () => {
