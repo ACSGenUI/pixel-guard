@@ -9,5 +9,5 @@
     "allowJs": true,
     "outDir": "dist"
   },
-  "include": ["src", "aem-visual-checker/changes.js"]
+  "include": ["src", "aem-visual-checker/changes.js", "aem-visual-checker/tools/page-diff/changes.js"]
 }
