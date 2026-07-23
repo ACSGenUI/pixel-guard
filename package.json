@@ -6,7 +6,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test 'src/**/*.test.ts'",
+    "test": "tsx --test 'src/**/*.test.ts' 'aem-visual-checker/tools/page-diff/**/*.test.js'",
     "studio": "mastra dev"
   },
   "repository": {
