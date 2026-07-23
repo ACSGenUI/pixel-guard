@@ -1,7 +1,7 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { execFile } from 'node:child_process';
 import { access, cp } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
@@ -56,10 +56,13 @@ export async function findMissingProjectPaths(baseDir: string): Promise<string[]
 const ASSETS_SOURCE_DIR = fileURLToPath(new URL('../../aem-visual-checker', import.meta.url));
 
 export async function copyRequiredFiles(sourceDir: string, targetDir: string): Promise<void> {
+  const pageDiffSourceDir = join(sourceDir, 'tools', 'page-diff');
   await cp(join(sourceDir, 'tools'), join(targetDir, 'tools'), {
     recursive: true,
     force: true,
-    filter: (source) => basename(source) !== '.DS_Store',
+    filter: (source) => basename(source) !== '.DS_Store'
+      && source !== pageDiffSourceDir
+      && !source.startsWith(`${pageDiffSourceDir}${sep}`),
   });
   await cp(join(sourceDir, '.dockerignore'), join(targetDir, '.dockerignore'), { force: true });
   await cp(join(sourceDir, '.env.example'), join(targetDir, '.env.example'), { force: true });

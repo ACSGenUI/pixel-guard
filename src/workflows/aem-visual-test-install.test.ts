@@ -114,6 +114,27 @@ test('copyRequiredFiles overwrites files that already exist in the target', asyn
   }
 });
 
+test('copyRequiredFiles does not copy a tools/page-diff subdirectory, even when present in the source', async () => {
+  const sourceDir = await makeTempProjectDir();
+  const targetDir = await makeTempProjectDir();
+  try {
+    await mkdir(join(sourceDir, 'tools', 'visual-tests'), { recursive: true });
+    await writeFile(join(sourceDir, 'tools', 'visual-tests', 'config.js'), 'export const x = 1;');
+    await mkdir(join(sourceDir, 'tools', 'page-diff'), { recursive: true });
+    await writeFile(join(sourceDir, 'tools', 'page-diff', 'compare-page-diff.js'), '// installed separately by installPageDiff');
+    await writeFile(join(sourceDir, '.dockerignore'), '');
+    await writeFile(join(sourceDir, '.env.example'), '');
+
+    await copyRequiredFiles(sourceDir, targetDir);
+
+    await access(join(targetDir, 'tools', 'visual-tests', 'config.js'));
+    await assert.rejects(() => access(join(targetDir, 'tools', 'page-diff', 'compare-page-diff.js')));
+  } finally {
+    await rm(sourceDir, { recursive: true, force: true });
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
 test('copyRequiredFiles leaves target-only files under tools/ untouched (merge, not clean)', async () => {
   const srcDir = await makeTempProjectDir();
   const targetDir = await makeTempProjectDir();
