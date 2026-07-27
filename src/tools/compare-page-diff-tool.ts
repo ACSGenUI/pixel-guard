@@ -16,19 +16,15 @@ function groupKey(region: Region): string {
   return block ? `${block.kind}:${block.selector}` : '__unattributed__';
 }
 
-const KIND_LABEL: Record<string, string> = { block: 'Blocks', landmark: 'Landmarks', section: 'Sections' };
 const KIND_NOUN: Record<string, string> = { block: 'Block', landmark: 'Landmark', section: 'Section' };
 
+// Ordered top-to-bottom (header/nav first, then down the page) by buildBlockSummary,
+// so the agent fixes in page order. Rendered as a single list in that order.
 function formatBlockSummary(pair: RunSummary['pairs'][number]): string[] {
   const summary = pair.blockSummary ?? [];
   if (summary.length === 0) return [];
-  const lines: string[] = ['   Blocks affected (ranked):'];
-  let currentKind: string | null = null;
+  const lines: string[] = ['   Blocks affected (top to bottom):'];
   for (const item of summary) {
-    if (item.kind !== currentKind) {
-      currentKind = item.kind;
-      lines.push(`   ${KIND_LABEL[item.kind]}:`);
-    }
     const pct = Math.round(item.coverage * 100);
     const vpCount = item.viewportsAffected.length;
     lines.push(
@@ -97,7 +93,7 @@ export function formatSummary(summary: RunSummary): string {
       '',
       '1. Open the page-diff report linked below and review it top-to-bottom: the full-page live/migrated/diff comparison, then the block-level roll-up, then the per-region detail.',
       '2. Write a complete summary for the user: where the differences are coming from (which blocks/landmarks/sections and why), the major fixes needed, and any quick fixes.',
-      '3. Fix block-by-block, worst-first per the roll-up. For each broken block:',
+      '3. Fix block-by-block in page order, NOT by severity: the roll-up above is ordered top-to-bottom. Start at the top — the header/nav if it is broken, then the first (topmost) affected block — and work straight down the page. For each block:',
       '   - `captureLiveBlock` (block name + this runId) to save the live target as a baseline,',
       '   - `compareBlock` to see the gap, then fix the migrated block\'s CSS/markup and re-run `compareBlock` until every viewport passes.',
       'Do NOT screenshot the live or migrated pages yourself — captureLiveBlock and compareBlock already capture, locate, and diff each block for you.',

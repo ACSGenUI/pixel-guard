@@ -128,7 +128,7 @@ export default async (page, ctx) => {
 };
 ```
 
-The response and the HTML report now lead with a **Blocks affected (ranked)** roll-up: failing regions are aggregated per block across all viewports and ranked by a coverage-first composite (share of the block's own area that differs, then how many viewports it breaks in, then total diff pixels), grouped Blocks → Landmarks → Sections. Use it to decide which block to fix first. It covers only blocks that appear in a failing region — it does not enumerate clean blocks or detect blocks that are missing entirely (that remains a judgment call from comparing the live and migrated pages).
+The response and the HTML report now lead with a **Blocks affected (top to bottom)** roll-up: failing regions are aggregated per block across all viewports and listed in **page order** — the block's on-page position, so the header/nav comes first, then each block down the page. Each entry still shows its severity (coverage — the share of the block's own area that differs — plus affected viewports, region count, and diff pixels), so you can see how bad each one is, but the order is spatial so fixes proceed top-to-bottom rather than jumping around by severity. It covers only blocks that appear in a failing region — it does not enumerate clean blocks or detect blocks that are missing entirely (that remains a judgment call from comparing the live and migrated pages).
 
 **Input:** `mappingFile` (string, path to a CSV or JSON file of `{liveUrl, migratedUrl}` pairs), `projectDir?` (string)
 
@@ -170,9 +170,9 @@ Re-screenshots **only** the migrated block and pixel-diffs it against its saved 
 
 These two tools plus the `comparePageDiff` roll-up form an end-to-end migration-fix loop:
 
-1. `comparePageDiff` → the **Blocks affected (ranked)** roll-up names the broken blocks worst-first.
-2. Pick the top block; `captureLiveBlock` to save its live baseline (validate/override the match once).
+1. `comparePageDiff` → the **Blocks affected (top to bottom)** roll-up lists the broken blocks in page order (header/nav first, then down the page).
+2. Start at the top of that list — the topmost broken block; `captureLiveBlock` to save its live baseline (validate/override the match once).
 3. `compareBlock` to see the current gap, fix the migrated block's CSS/markup, and re-run `compareBlock` until every viewport passes.
-4. Move to the next broken block and repeat.
+4. Move down to the next broken block and repeat, working top-to-bottom through the page.
 
 `captureLiveBlock` hits the live site once per block; the fix loop after that runs entirely against the migrated page.

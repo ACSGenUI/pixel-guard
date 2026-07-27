@@ -1,8 +1,8 @@
-const KIND_ORDER = { block: 0, landmark: 1, section: 2 };
-
-// Aggregates a pair's failing, block-attributed regions into one ranked roll-up per block type.
-// Grouping key is `kind:name`; coverage is the max across viewports of (sum diff px / block area),
-// clamped to [0,1]. See docs/superpowers/specs/2026-07-27-page-diff-block-impact-rollup-design.md.
+// Aggregates a pair's failing, block-attributed regions into one roll-up per block type,
+// ordered top-to-bottom by the block's on-page position (header/nav first) so fixes proceed
+// down the page rather than by severity. Grouping key is `kind:name`; coverage is the max
+// across viewports of (sum diff px / block area), clamped to [0,1].
+// See docs/superpowers/specs/2026-07-27-page-diff-block-impact-rollup-design.md.
 export function buildBlockSummary(viewports) {
   const groups = new Map();
 
@@ -22,6 +22,7 @@ export function buildBlockSummary(viewports) {
         group.perViewport.set(viewport.viewportLabel, {
           diffPx: 0,
           area: box.width * box.height,
+          boxY: box.y,
           selector: block.selector,
           regions: [],
         });
@@ -66,13 +67,16 @@ export function buildBlockSummary(viewports) {
       coverage,
       viewportsAffected,
       severityScore: coverage,
+      topY: worst.boxY,
       worstViewport,
       worstCrop: worstRegion?.crops?.diff ?? null,
     });
   }
 
+  // Top-to-bottom: block position on the page (worst viewport). Ties broken by
+  // severity so the more-broken of two co-located blocks leads.
   rollups.sort((a, b) => {
-    if (KIND_ORDER[a.kind] !== KIND_ORDER[b.kind]) return KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
+    if (a.topY !== b.topY) return a.topY - b.topY;
     if (b.coverage !== a.coverage) return b.coverage - a.coverage;
     if (b.viewportsAffected.length !== a.viewportsAffected.length) {
       return b.viewportsAffected.length - a.viewportsAffected.length;

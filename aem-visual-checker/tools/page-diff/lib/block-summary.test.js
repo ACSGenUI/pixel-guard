@@ -67,20 +67,29 @@ test('excludes ignored and unattributed regions', () => {
   assert.equal(result[0].name, 'cards');
 });
 
-test('ranks by coverage desc, then viewportsAffected desc, then totalDiffPx desc; kinds ordered block,landmark,section', () => {
-  const mk = (name, kind, label, diffPx) => ({
-    viewportLabel: label,
-    regions: [region({ block: { name, selector: name, kind, boundingBox: { x: 0, y: 0, width: 100, height: 100 } }, diffPixelCount: diffPx })],
+test('orders entries top-to-bottom by block top Y (header first), regardless of severity', () => {
+  const mk = (name, kind, y, diffPx) => ({
+    viewportLabel: 'Desktop',
+    regions: [region({ block: { name, selector: name, kind, boundingBox: { x: 0, y, width: 100, height: 100 } }, diffPixelCount: diffPx })],
   });
-  // blockA coverage 0.6 (Desktop). blockB coverage 0.3 across 2 viewports. landmarkC coverage 0.9. sectionD coverage 0.99.
+  // columns is the most-broken but lowest on the page; nav is at the very top.
   const viewports = [
-    mk('A', 'block', 'Desktop', 6000),
-    mk('B', 'block', 'Tablet', 3000), mk('B', 'block', 'Desktop', 3000),
-    mk('C', 'landmark', 'Desktop', 9000),
-    mk('D', 'section', 'Desktop', 9900),
+    mk('columns', 'block', 1200, 9900),
+    mk('nav', 'landmark', 0, 100),
+    mk('hero', 'block', 200, 6000),
   ];
-  const names = buildBlockSummary(viewports).map((r) => `${r.kind}:${r.name}`);
-  assert.deepEqual(names, ['block:A', 'block:B', 'landmark:C', 'section:D']);
+  const order = buildBlockSummary(viewports).map((r) => `${r.kind}:${r.name}`);
+  assert.deepEqual(order, ['landmark:nav', 'block:hero', 'block:columns']);
+});
+
+test('exposes topY as the block top Y in the worst viewport', () => {
+  const viewports = [
+    { viewportLabel: 'Tablet', regions: [region({ diffPixelCount: 100, block: { name: 'hero', selector: 's', kind: 'block', boundingBox: { x: 0, y: 50, width: 100, height: 100 } } })] },
+    { viewportLabel: 'Desktop', regions: [region({ diffPixelCount: 5000, block: { name: 'hero', selector: 's', kind: 'block', boundingBox: { x: 0, y: 300, width: 100, height: 100 } } })] },
+  ];
+  const [hero] = buildBlockSummary(viewports);
+  assert.equal(hero.worstViewport, 'Desktop');
+  assert.equal(hero.topY, 300);
 });
 
 test('worstCrop is the diff crop of the largest-diffPixelCount region in the worst viewport', () => {

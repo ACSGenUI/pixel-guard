@@ -139,8 +139,6 @@ function renderViewport(viewport, pairSlug) {
     </details>`;
 }
 
-const KIND_GROUP_LABEL = { block: 'Blocks', landmark: 'Landmarks', section: 'Sections' };
-
 function renderBlockImpactRow(item) {
   const pct = Math.round(item.coverage * 100);
   const vpChips = item.viewportsAffected
@@ -152,7 +150,7 @@ function renderBlockImpactRow(item) {
       <div class="bi-row">
         ${thumb}
         <div class="bi-main">
-          <div class="bi-name">${escapeHtml(item.name)}</div>
+          <div class="bi-name">${escapeHtml(item.name)} <span class="kind">${escapeHtml(item.kind)}</span></div>
           <div class="bi-bar"><span style="width:${pct}%"></span></div>
         </div>
         <div class="bi-meta">
@@ -166,23 +164,15 @@ function renderBlockImpactRow(item) {
 }
 
 // At-a-glance ranked roll-up at the top of a pair: which blocks are most broken, by coverage.
+// The roll-up arrives already ordered top-to-bottom (header/nav first, then down the
+// page), so render it as a single list in that order rather than grouping by kind.
 function renderBlockImpact(pair) {
   const summary = pair.blockSummary ?? [];
   if (summary.length === 0) return '';
-  const byKind = { block: [], landmark: [], section: [] };
-  summary.forEach((item) => { (byKind[item.kind] ?? byKind.block).push(item); });
-  const groups = ['block', 'landmark', 'section']
-    .filter((kind) => byKind[kind].length > 0)
-    .map((kind) => `
-    <div class="bi-kind">
-      <h4>${KIND_GROUP_LABEL[kind]}</h4>
-      ${byKind[kind].map(renderBlockImpactRow).join('')}
-    </div>`)
-    .join('');
   return `
   <section class="block-impact">
-    <h3>Block impact</h3>
-    ${groups}
+    <h3>Block impact (top to bottom)</h3>
+    ${summary.map(renderBlockImpactRow).join('')}
   </section>`;
 }
 
@@ -264,7 +254,6 @@ const STYLES = `
     .elements .styles { color: var(--muted); margin-left: .4rem; }
     section.block-impact { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin: .6rem 0 .6rem .5rem; padding: .6rem .9rem; }
     section.block-impact h3 { margin: 0 0 .5rem; font-size: .95rem; }
-    .bi-kind h4 { margin: .5rem 0 .3rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
     .bi-row { display: flex; align-items: center; gap: .7rem; padding: .35rem 0; border-top: 1px solid var(--line); }
     .bi-thumb { width: 60px; height: 40px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; flex: none; }
     .bi-main { flex: 1; min-width: 0; }

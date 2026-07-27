@@ -60,6 +60,7 @@ const blockRollupSchema = z.object({
   coverage: z.number(),
   viewportsAffected: z.array(z.string()),
   severityScore: z.number(),
+  topY: z.number(),
   worstViewport: z.string(),
   worstCrop: z.string().nullable(),
 });

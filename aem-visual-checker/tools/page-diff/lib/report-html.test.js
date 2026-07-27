@@ -92,23 +92,23 @@ test('generateReportHtml escapes HTML-sensitive characters in URLs', () => {
   assert.match(html, /b=&lt;2&gt;/);
 });
 
-test('renders a Block impact panel from pair.blockSummary, grouped by kind and escaped', () => {
+test('renders a Block impact panel from pair.blockSummary as a top-to-bottom list with kind labels', () => {
   const summary = {
     runId: 'r', createdAt: 'c',
     pairs: [{
       pairSlug: 'home', liveUrl: 'https://l/', migratedUrl: 'https://m/',
       blockSummary: [
         {
-          kind: 'block', name: 'carousel-testimonial', selector: 's',
-          regionCount: 9, totalDiffPx: 1712285, coverage: 0.61,
-          viewportsAffected: ['Desktop', 'Large', 'Tablet'], severityScore: 0.61,
-          worstViewport: 'Large', worstCrop: 'home/large/region-5-diff.png',
-        },
-        {
           kind: 'landmark', name: 'nav', selector: 's2',
           regionCount: 2, totalDiffPx: 6904, coverage: 0.05,
-          viewportsAffected: ['Large'], severityScore: 0.05,
+          viewportsAffected: ['Large'], severityScore: 0.05, topY: 0,
           worstViewport: 'Large', worstCrop: null,
+        },
+        {
+          kind: 'block', name: 'carousel-testimonial', selector: 's',
+          regionCount: 9, totalDiffPx: 1712285, coverage: 0.61,
+          viewportsAffected: ['Desktop', 'Large', 'Tablet'], severityScore: 0.61, topY: 1800,
+          worstViewport: 'Large', worstCrop: 'home/large/region-5-diff.png',
         },
       ],
       viewports: [],
@@ -116,11 +116,13 @@ test('renders a Block impact panel from pair.blockSummary, grouped by kind and e
   };
   const html = generateReportHtml(summary);
   assert.match(html, /Block impact/);
-  assert.match(html, /Blocks<\/h4>/);
-  assert.match(html, /Landmarks<\/h4>/);
+  assert.doesNotMatch(html, /<h4>/); // no per-kind sub-headings anymore
+  assert.match(html, /class="kind"/); // kind shown inline per row instead
   assert.match(html, /carousel-testimonial/);
   assert.match(html, /61% coverage/);
   assert.match(html, /home\/large\/region-5-diff\.png/);
+  // top-to-bottom: nav (topY 0) renders before carousel (topY 1800)
+  assert.ok(html.indexOf('>nav ') < html.indexOf('carousel-testimonial'));
 });
 
 test('omits the Block impact panel when a pair has no blockSummary', () => {
