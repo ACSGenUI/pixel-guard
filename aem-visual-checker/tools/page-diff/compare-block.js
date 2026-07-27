@@ -6,6 +6,7 @@ import { chromium } from 'playwright';
 import { runCompare } from './compare-page-diff.js';
 import { collectBlockBoxes } from './lib/dom-capture.js';
 import { cropPng } from './lib/crop-images.js';
+import { runPreparePage } from './lib/prepare-page.js';
 import { compareBlockCrops } from './lib/block-compare.js';
 import { baselinePath, blockSlug } from './lib/block-baseline.js';
 import { VIEWPORTS, THRESHOLDS } from './config.js';
@@ -58,6 +59,9 @@ export async function runCompareBlock({ runId, mappingFile, block, viewport, tar
       try {
         const page = await context.newPage();
         await page.goto(pair.migratedUrl, { waitUntil: 'networkidle' });
+        await runPreparePage(page, {
+          side: 'migrated', url: pair.migratedUrl, pairSlug: pair.pairSlug, viewport: vp.label,
+        }, targetDir);
         const box = findBlockBox(await collectBlockBoxes(page), block);
         if (!box) throw new Error(`Block "${block}" not found on migrated page at ${vp.label}`);
         const fullPage = await page.screenshot({ fullPage: true, type: 'png', animations: 'disabled' });

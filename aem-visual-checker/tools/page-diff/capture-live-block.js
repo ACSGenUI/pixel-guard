@@ -9,6 +9,7 @@ import {
   extractAnchors, findAnchorsInLiveDom, unionBox, computeConfidence,
 } from './lib/anchor-match.js';
 import { cropPng } from './lib/crop-images.js';
+import { runPreparePage } from './lib/prepare-page.js';
 import { baselineDir, baselinePath, upsertManifestEntry } from './lib/block-baseline.js';
 import { VIEWPORTS, THRESHOLDS, ANCHOR_MATCH } from './config.js';
 
@@ -61,12 +62,18 @@ export async function runCaptureLiveBlock({ runId, mappingFile, block, viewport,
       try {
         const migratedPage = await migratedContext.newPage();
         await migratedPage.goto(pair.migratedUrl, { waitUntil: 'networkidle' });
+        await runPreparePage(migratedPage, {
+          side: 'migrated', url: pair.migratedUrl, pairSlug: pair.pairSlug, viewport: vp.label,
+        }, targetDir);
         const migratedBlock = findBlockBox(await collectBlockBoxes(migratedPage), block);
         if (!migratedBlock) throw new Error(`Block "${block}" not found on migrated page at ${vp.label}`);
         const anchors = await extractAnchors(migratedPage, migratedBlock.selector);
 
         const livePage = await liveContext.newPage();
         await livePage.goto(pair.liveUrl, { waitUntil: 'networkidle' });
+        await runPreparePage(livePage, {
+          side: 'live', url: pair.liveUrl, pairSlug: pair.pairSlug, viewport: vp.label,
+        }, targetDir);
         const meta = await pageMeta(livePage);
         const pageArea = Math.max(meta.w, vp.width) * meta.h;
 

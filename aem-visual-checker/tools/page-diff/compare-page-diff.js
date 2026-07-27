@@ -10,6 +10,7 @@ import {
 } from './lib/ignore-rules.js';
 import { cropPng } from './lib/crop-images.js';
 import { collectBlockBoxes, assignRegionToBlock } from './lib/dom-capture.js';
+import { runPreparePage } from './lib/prepare-page.js';
 import { generateReportHtml } from './lib/report-html.js';
 import { buildBlockSummary } from './lib/block-summary.js';
 import { VIEWPORTS, THRESHOLDS } from './config.js';
@@ -49,6 +50,10 @@ export async function runCompare({ mappingFile, targetDir }) {
           const migratedPage = await migratedContext.newPage();
           await livePage.goto(pair.liveUrl, { waitUntil: 'networkidle' });
           await migratedPage.goto(pair.migratedUrl, { waitUntil: 'networkidle' });
+
+          const prepareContext = { pairSlug: pair.pairSlug, viewport: viewport.label };
+          await runPreparePage(livePage, { ...prepareContext, side: 'live', url: pair.liveUrl }, targetDir);
+          await runPreparePage(migratedPage, { ...prepareContext, side: 'migrated', url: pair.migratedUrl }, targetDir);
 
           const liveBuffer = await livePage.screenshot({ fullPage: true, type: 'png', animations: 'disabled' });
           const migratedBuffer = await migratedPage.screenshot({ fullPage: true, type: 'png', animations: 'disabled' });

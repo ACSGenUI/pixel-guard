@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { runCompare } from './compare-page-diff.js';
 import { collectAllBoundingBoxes, collectElementDetails, filterOverlappingElements } from './lib/dom-capture.js';
+import { runPreparePage } from './lib/prepare-page.js';
 import { generateReportHtml } from './lib/report-html.js';
 import { VIEWPORTS } from './config.js';
 
@@ -38,6 +39,9 @@ export async function runLocalize({ runId, mappingFile, targetDir }) {
         try {
           const page = await context.newPage();
           await page.goto(pair.migratedUrl, { waitUntil: 'networkidle' });
+          await runPreparePage(page, {
+            side: 'migrated', url: pair.migratedUrl, pairSlug: pair.pairSlug, viewport: viewportSummary.viewportLabel,
+          }, targetDir);
           const allBoxes = await collectAllBoundingBoxes(page);
 
           for (const region of failingRegions) {
