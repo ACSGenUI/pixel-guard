@@ -27,6 +27,8 @@ PAGE-DIFF: given a mapping of live URLs to their migrated counterparts, screensh
 1. installPageDiff -- once, to set up the page-diff environment in the target project (copies tools/page-diff/, adds its npm scripts/dependencies, runs npm install). Independent of aemVisualTestInstall -- do not run that instead, and do not assume it's needed first.
 2. comparePageDiff -- given a CSV/JSON mapping file of { liveUrl, migratedUrl } pairs, screenshots and pixel-diffs both sides at every configured viewport, reporting which page regions differ with cropped before/after/diff images and a browsable HTML report.
 3. localizePageDiff -- after comparePageDiff finds failing regions, finds the migrated page's overlapping DOM element(s) for each region and reports their selector, computed style, and outerHTML, so a fix can be reasoned about precisely instead of guessed from a diff image alone.
+4. captureLiveBlock -- for a block the roll-up flagged as broken, locate it on the LIVE site by content-anchor matching and save its rendering as a durable per-block baseline (tools/page-diff/baselines/). On low confidence it returns candidates; re-run with an explicit liveSelector to override.
+5. compareBlock -- re-screenshot just that migrated block and diff it against the saved live baseline, per viewport. Fast and offline. After each fix to the block's CSS/markup, re-run compareBlock until every viewport passes, then move to the next broken block.
 
 Every runVisualTests and updateVisualSnapshots response includes a "Playwright report" line -- a URL to a local server hosting the full HTML report. Every comparePageDiff and localizePageDiff response includes a "page-diff report" line the same way. Surface these links to the user so they can open them in a browser.
 

@@ -62,6 +62,8 @@ Opens Studio at `http://localhost:4111`. Go to **MCP Servers → pixelGuard → 
 | `installPageDiff` | Installs the page-diff environment in the target project (copies `tools/page-diff/`, adds its npm scripts/dependencies, runs `npm install`) -- independent of `aemVisualTestInstall` | "Set up page-diff for this project." |
 | `comparePageDiff` | Screenshots each live/migrated URL pair (from a CSV/JSON mapping file) at every configured viewport, pixel-diffs them, and reports which page regions differ, with cropped before/after/diff images and a browsable HTML report; leads with a ranked per-block impact roll-up (coverage-first) so you can see which block to fix first | "Compare the live and migrated homepage and show me what's different." |
 | `localizePageDiff` | For each failing region from a `comparePageDiff` run, finds the overlapping migrated-page DOM element(s) and reports their selector, computed style, and outerHTML | "Localize the diffs from that last comparison to the actual elements." |
+| `captureLiveBlock` | Locates a broken block on the live site (content-anchor matching, with a `liveSelector` override) and saves its rendering as a durable per-block baseline | "Capture the live baseline for the hero-spotlight block." |
+| `compareBlock` | Re-diffs one migrated block against its saved live baseline, per viewport, for a fast offline fix loop | "Compare the hero-spotlight block against its live baseline." |
 
 See [AGENTS.md](./AGENTS.md) for the full input schema and more example prompts per tool.
 

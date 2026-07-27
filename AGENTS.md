@@ -133,3 +133,34 @@ For each failing region from a `comparePageDiff` run, navigates to the migrated 
 **Example prompts:**
 - "Localize the diffs from that last comparison to the actual elements."
 - "Run a fresh page diff on urls.csv and localize the results."
+
+### `captureLiveBlock`
+
+For a block the roll-up flagged as broken, locates that block on the **live** site — whose DOM doesn't match the migrated EDS structure — by **content-anchor matching**: it reads the migrated block's distinctive content (heading text, text snippets, image `src`/`alt`), searches the live DOM for the same content, and takes the bounding box enclosing the matches. It screenshots that live region per viewport and saves it as a durable per-block baseline under `tools/page-diff/baselines/<pairSlug>/`, plus a `manifest.json` entry (anchors, selector, box, confidence, source URL). Baselines are captured **once** and meant to be committed. When match confidence is below threshold (or no anchors match), the response says so and asks you to re-run with an explicit `liveSelector` — supply a CSS selector you pick from the live page and it screenshots that instead.
+
+**Input:** `block` (string, `name` or `kind:name`, e.g. `hero-spotlight` / `landmark:nav`), `runId?` (string, an existing `comparePageDiff` run supplying the URL pair), `mappingFile?` (string, run a fresh comparison first if `runId` is omitted), `viewport?` (string, a single label; default all), `liveSelector?` (string, override for low-confidence matches), `projectDir?` (string)
+
+**Example prompts:**
+- "Capture the live baseline for the hero-spotlight block."
+- "The auto-match was wrong — capture hero-spotlight from the live selector `.hero-banner`."
+
+### `compareBlock`
+
+Re-screenshots **only** the migrated block and pixel-diffs it against its saved live baseline, per viewport — a fast, offline check (it never touches the live site). Widths are normalized to the common width; a height difference is reported as a `heightDelta` (mirroring page-diff's page-length mismatch). Requires a baseline from `captureLiveBlock` (missing → it tells you to capture first). Serves a compact block-comparison report (baseline / migrated / diff per viewport).
+
+**Input:** `block` (string, `name` or `kind:name`), `runId?` (string) or `mappingFile?` (string), `viewport?` (string, a single label; default all captured), `projectDir?` (string)
+
+**Example prompts:**
+- "Compare the hero-spotlight block against its live baseline."
+- "Re-check hero-spotlight at Desktop after my CSS change."
+
+### The block-fix loop
+
+These two tools plus the `comparePageDiff` roll-up form an end-to-end migration-fix loop:
+
+1. `comparePageDiff` → the **Blocks affected (ranked)** roll-up names the broken blocks worst-first.
+2. Pick the top block; `captureLiveBlock` to save its live baseline (validate/override the match once).
+3. `compareBlock` to see the current gap, fix the migrated block's CSS/markup, and re-run `compareBlock` until every viewport passes.
+4. Move to the next broken block and repeat.
+
+`captureLiveBlock` hits the live site once per block; the fix loop after that runs entirely against the migrated page.
