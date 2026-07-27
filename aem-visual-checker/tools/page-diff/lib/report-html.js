@@ -95,7 +95,24 @@ function renderGroup(group) {
 }
 
 // Breakpoint (viewport) accordion — open by default.
-function renderViewport(viewport) {
+// Full-page live/migrated/diff screenshots, shown before the region/block breakdown.
+// The files are written by compare-page-diff.js at <pairSlug>/<viewport>/{live,migrated,diff}.png;
+// only present for non-error viewports (an errored viewport never got past screenshotting).
+function renderFullPage(pairSlug, viewport) {
+  if (viewport.status === 'error') return '';
+  const base = `${pairSlug}/${viewport.viewportLabel.toLowerCase()}`;
+  return `
+      <details class="fullpage" open>
+        <summary><span class="region-title">Full page</span></summary>
+        <div class="crops">
+          <figure><img loading="lazy" src="${escapeHtml(base)}/live.png" alt="live full page"><figcaption>Live</figcaption></figure>
+          <figure><img loading="lazy" src="${escapeHtml(base)}/migrated.png" alt="migrated full page"><figcaption>Migrated</figcaption></figure>
+          <figure><img loading="lazy" src="${escapeHtml(base)}/diff.png" alt="diff full page"><figcaption>Diff</figcaption></figure>
+        </div>
+      </details>`;
+}
+
+function renderViewport(viewport, pairSlug) {
   const chip = `<span class="chip ${escapeHtml(viewport.status)}">${escapeHtml(viewport.status.toUpperCase())}</span>`;
   const { failed, ignored } = viewportCounts(viewport);
   const counts = viewport.regions.length > 0
@@ -117,6 +134,7 @@ function renderViewport(viewport) {
       </summary>
       ${error}
       ${mismatch}
+      ${renderFullPage(pairSlug, viewport)}
       ${groups}
     </details>`;
 }
@@ -179,7 +197,7 @@ function renderPair(pair) {
       <span class="urls">${escapeHtml(pair.liveUrl)} <span class="arrow">→</span> ${escapeHtml(pair.migratedUrl)}</span>
     </summary>
     ${renderBlockImpact(pair)}
-    ${pair.viewports.map(renderViewport).join('')}
+    ${pair.viewports.map((viewport) => renderViewport(viewport, pair.pairSlug)).join('')}
   </details>`;
 }
 
@@ -233,6 +251,8 @@ const STYLES = `
     .meta { color: var(--muted); font-weight: 400; font-size: .78rem; margin-left: auto; }
     .chip { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: .1rem .45rem; border-radius: 999px; color: #fff; white-space: nowrap; }
     .chip.pass { background: var(--pass); } .chip.fail, .chip.failed, .chip.error { background: var(--fail); } .chip.ignored { background: var(--ignored); }
+    details.fullpage { margin: .4rem 0 .4rem 1.25rem; }
+    details.fullpage > summary { padding: .35rem 0; font-size: .84rem; }
     details.region { border-top: 1px solid var(--line); }
     details.region > summary { padding: .5rem .8rem; font-size: .84rem; }
     .region-title { font-weight: 600; }

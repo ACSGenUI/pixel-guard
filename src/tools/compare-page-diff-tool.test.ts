@@ -40,3 +40,33 @@ test('omits the Blocks affected section when blockSummary is absent', () => {
   const summary = { runId: 'r', createdAt: 'c', pairs: [{ ...base }] } as any;
   assert.doesNotMatch(formatSummary(summary), /Blocks affected/);
 });
+
+test('appends a next-steps directive steering to the report summary and block-fix tools when there are failures', () => {
+  const summary = {
+    runId: 'r', createdAt: 'c',
+    pairs: [{
+      pairSlug: 'home', liveUrl: 'https://l/', migratedUrl: 'https://m/',
+      blockSummary: [{
+        kind: 'block', name: 'hero-spotlight', selector: 's', regionCount: 2, totalDiffPx: 1000,
+        coverage: 0.4, viewportsAffected: ['Desktop'], severityScore: 0.4, worstViewport: 'Desktop', worstCrop: null,
+      }],
+      viewports: [{ viewportLabel: 'Desktop', status: 'fail', errorMessage: null, pageLengthMismatch: null, regions: [] }],
+    }],
+  } as any;
+  const text = formatSummary(summary);
+  assert.match(text, /Next steps/);
+  assert.match(text, /summary/i);
+  assert.match(text, /captureLiveBlock/);
+  assert.match(text, /compareBlock/);
+});
+
+test('omits the next-steps directive when everything passed', () => {
+  const summary = {
+    runId: 'r', createdAt: 'c',
+    pairs: [{
+      pairSlug: 'home', liveUrl: 'https://l/', migratedUrl: 'https://m/',
+      viewports: [{ viewportLabel: 'Desktop', status: 'pass', errorMessage: null, pageLengthMismatch: null, regions: [] }],
+    }],
+  } as any;
+  assert.doesNotMatch(formatSummary(summary), /Next steps/);
+});

@@ -88,6 +88,23 @@ export function formatSummary(summary: RunSummary): string {
     lines.push('');
   }
 
+  const hasFailures = summary.pairs.some(
+    (pair) => (pair.blockSummary?.length ?? 0) > 0 || pair.viewports.some((v) => v.status === 'fail'),
+  );
+  if (hasFailures) {
+    lines.push(
+      '## Next steps',
+      '',
+      '1. Open the page-diff report linked below and review it top-to-bottom: the full-page live/migrated/diff comparison, then the block-level roll-up, then the per-region detail.',
+      '2. Write a complete summary for the user: where the differences are coming from (which blocks/landmarks/sections and why), the major fixes needed, and any quick fixes.',
+      '3. Fix block-by-block, worst-first per the roll-up. For each broken block:',
+      '   - `captureLiveBlock` (block name + this runId) to save the live target as a baseline,',
+      '   - `compareBlock` to see the gap, then fix the migrated block\'s CSS/markup and re-run `compareBlock` until every viewport passes.',
+      'Do NOT screenshot the live or migrated pages yourself — captureLiveBlock and compareBlock already capture, locate, and diff each block for you.',
+      '',
+    );
+  }
+
   return lines.join('\n');
 }
 

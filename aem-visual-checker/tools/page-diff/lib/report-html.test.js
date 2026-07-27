@@ -130,3 +130,34 @@ test('omits the Block impact panel when a pair has no blockSummary', () => {
   };
   assert.doesNotMatch(generateReportHtml(summary), /Block impact/);
 });
+
+test('renders a full-page live/migrated/diff comparison at the top of a non-error viewport', () => {
+  const summary = {
+    runId: 'r', createdAt: 'c',
+    pairs: [{
+      pairSlug: 'home', liveUrl: 'https://l/', migratedUrl: 'https://m/',
+      viewports: [{
+        viewportLabel: 'Desktop', status: 'fail', errorMessage: null, pageLengthMismatch: null, regions: [],
+      }],
+    }],
+  };
+  const html = generateReportHtml(summary);
+  assert.match(html, /Full page/);
+  assert.match(html, /home\/desktop\/live\.png/);
+  assert.match(html, /home\/desktop\/migrated\.png/);
+  assert.match(html, /home\/desktop\/diff\.png/);
+});
+
+test('omits the full-page comparison for an error viewport (no screenshots exist)', () => {
+  const summary = {
+    runId: 'r', createdAt: 'c',
+    pairs: [{
+      pairSlug: 'home', liveUrl: 'https://l/', migratedUrl: 'https://m/',
+      viewports: [{
+        viewportLabel: 'Mobile', status: 'error', errorMessage: 'width mismatch', pageLengthMismatch: null, regions: [],
+      }],
+    }],
+  };
+  const html = generateReportHtml(summary);
+  assert.doesNotMatch(html, /home\/mobile\/live\.png/);
+});
