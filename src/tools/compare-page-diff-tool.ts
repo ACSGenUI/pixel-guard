@@ -16,11 +16,38 @@ function groupKey(region: Region): string {
   return block ? `${block.kind}:${block.selector}` : '__unattributed__';
 }
 
-function formatSummary(summary: RunSummary): string {
+const KIND_LABEL: Record<string, string> = { block: 'Blocks', landmark: 'Landmarks', section: 'Sections' };
+const KIND_NOUN: Record<string, string> = { block: 'Block', landmark: 'Landmark', section: 'Section' };
+
+function formatBlockSummary(pair: RunSummary['pairs'][number]): string[] {
+  const summary = pair.blockSummary ?? [];
+  if (summary.length === 0) return [];
+  const lines: string[] = ['   Blocks affected (ranked):'];
+  let currentKind: string | null = null;
+  for (const item of summary) {
+    if (item.kind !== currentKind) {
+      currentKind = item.kind;
+      lines.push(`   ${KIND_LABEL[item.kind]}:`);
+    }
+    const pct = Math.round(item.coverage * 100);
+    const vpCount = item.viewportsAffected.length;
+    lines.push(
+      `      ❌ ${KIND_NOUN[item.kind]} "${item.name}" — coverage ${pct}%, `
+      + `${vpCount} viewport${vpCount === 1 ? '' : 's'} [${item.viewportsAffected.join(', ')}], `
+      + `${item.regionCount} region${item.regionCount === 1 ? '' : 's'}, `
+      + `${item.totalDiffPx.toLocaleString('en-US')} px`,
+    );
+  }
+  lines.push('');
+  return lines;
+}
+
+export function formatSummary(summary: RunSummary): string {
   const lines: string[] = [`## Compare Page Diff (run ${summary.runId})`, ''];
 
   for (const pair of summary.pairs) {
     lines.push(`### ${pair.pairSlug} — ${pair.liveUrl} → ${pair.migratedUrl}`);
+    lines.push(...formatBlockSummary(pair));
     for (const viewport of pair.viewports) {
       const icon = viewport.status === 'pass' ? '✅' : viewport.status === 'fail' ? '❌' : '⚠️';
       lines.push(`${icon} ${viewport.viewportLabel} — ${viewport.status}`);
