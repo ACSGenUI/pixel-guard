@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { mergePackageJson, appendMissingLines, addLoadScriptImport, addSidekickLibraryLoader } from './update-project-config.js';
+import { copySkill } from './copy-skill.js';
 import { scripts, dependenciesToAdd, devDependenciesToAdd, gitignoreLines, hlxignoreLines } from '../../aem-visual-checker/changes.js';
 import { startDevServer, stopDevServer } from './dev-server.js';
 import { resolveProjectDir } from './project-dir.js';
@@ -128,9 +129,10 @@ export const copyRequiredFilesStep = createStep({
     }
     const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
     await copyRequiredFiles(ASSETS_SOURCE_DIR, targetDir);
+    await copySkill(ASSETS_SOURCE_DIR, targetDir, 'pixel-guard-visual-test-fix');
     return {
       filesCopied: true,
-      message: 'Copied tools/, .dockerignore, and .env.example to the project.',
+      message: 'Copied tools/, .dockerignore, .env.example, and the .claude/skills/pixel-guard-visual-test-fix skill to the project.',
     };
   },
 });

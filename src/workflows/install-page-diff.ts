@@ -9,6 +9,7 @@ import {
   scripts, dependenciesToAdd, gitignoreLines, hlxignoreLines,
 } from '../../aem-visual-checker/tools/page-diff/changes.js';
 import { mergePackageJson, appendMissingLines } from './update-project-config.js';
+import { copySkill } from './copy-skill.js';
 import { resolveProjectDir } from './project-dir.js';
 
 const execFileAsync = promisify(execFile);
@@ -69,7 +70,8 @@ export const copyPageDiffFilesStep = createStep({
     }
     const targetDir = resolveProjectDir(getInitData<{ projectDir?: string }>().projectDir);
     await copyPageDiffFiles(ASSETS_SOURCE_DIR, targetDir);
-    return { filesCopied: true, message: 'Copied tools/page-diff/ to the project.' };
+    await copySkill(ASSETS_SOURCE_DIR, targetDir, 'pixel-guard-page-diff-fix');
+    return { filesCopied: true, message: 'Copied tools/page-diff/ and the .claude/skills/pixel-guard-page-diff-fix skill to the project.' };
   },
 });
 
