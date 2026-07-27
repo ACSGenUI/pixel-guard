@@ -7,6 +7,7 @@ import { updateVisualSnapshotsTool } from './tools/update-visual-snapshots-tool.
 import { installPageDiffTool } from './tools/install-page-diff-tool.js';
 import { comparePageDiffTool } from './tools/compare-page-diff-tool.js';
 import { localizePageDiffTool } from './tools/localize-page-diff-tool.js';
+import { captureLiveBlockTool } from './tools/capture-live-block-tool.js';
 
 // Surfaced to the connecting client via the MCP protocol handshake itself (MCPServerConfig's
 // `instructions` field), not a file in this repo -- this server is typically connected from
@@ -45,5 +46,6 @@ export const mcpServer = new MCPServer({
     installPageDiff: installPageDiffTool,
     comparePageDiff: comparePageDiffTool,
     localizePageDiff: localizePageDiffTool,
+    captureLiveBlock: captureLiveBlockTool,
   },
 });
