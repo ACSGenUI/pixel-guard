@@ -116,6 +116,8 @@ Installs the page-diff environment in the target project: copies `tools/page-dif
 
 Screenshots each `{liveUrl, migratedUrl}` pair from a mapping file at every configured viewport (mobile/tablet/desktop/large), pixel-diffs the two full-page screenshots, and clusters differences into regions. Produces cropped live/migrated/diff images per region and a browsable HTML report. Supports an ignore mechanism (`tools/page-diff/ignore.json`, user-authored) for known/expected differences, scoped by pair and/or viewport, matched by CSS selector or explicit pixel region. Requires `installPageDiff` to have been run first.
 
+The response and the HTML report now lead with a **Blocks affected (ranked)** roll-up: failing regions are aggregated per block across all viewports and ranked by a coverage-first composite (share of the block's own area that differs, then how many viewports it breaks in, then total diff pixels), grouped Blocks → Landmarks → Sections. Use it to decide which block to fix first. It covers only blocks that appear in a failing region — it does not enumerate clean blocks or detect blocks that are missing entirely (that remains a judgment call from comparing the live and migrated pages).
+
 **Input:** `mappingFile` (string, path to a CSV or JSON file of `{liveUrl, migratedUrl}` pairs), `projectDir?` (string)
 
 **Example prompts:**
