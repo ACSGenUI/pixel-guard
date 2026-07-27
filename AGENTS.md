@@ -116,6 +116,18 @@ Installs the page-diff environment in the target project: copies `tools/page-dif
 
 Screenshots each `{liveUrl, migratedUrl}` pair from a mapping file at every configured viewport (mobile/tablet/desktop/large), pixel-diffs the two full-page screenshots, and clusters differences into regions. Produces cropped live/migrated/diff images per region and a browsable HTML report. Supports an ignore mechanism (`tools/page-diff/ignore.json`, user-authored) for known/expected differences, scoped by pair and/or viewport, matched by CSS selector or explicit pixel region. Requires `installPageDiff` to have been run first.
 
+**Pre-screenshot hook.** An optional, user-authored `tools/page-diff/prepare.js` runs against every page after navigation and before any screenshot or DOM read — use it to remove noise (cookie-consent banners, ads, chat widgets) or perform actions (click, scroll, wait) so the two sides compare cleanly. It exports `async (page, ctx) => {}` receiving the Playwright `page` and `ctx = { side, url, pairSlug, viewport }`, where `side` is `'live'` or `'migrated'` so you can act on one side only (e.g. dismiss a consent banner that only appears on live). It runs across the whole workflow — `comparePageDiff`, `localizePageDiff`, `captureLiveBlock`, and `compareBlock` — so removed elements stay removed in block baselines too. Absent → no-op; a hook that throws fails the affected page with a clear message. Example:
+
+```js
+// tools/page-diff/prepare.js
+export default async (page, ctx) => {
+  if (ctx.side === 'live') {
+    await page.evaluate(() => document.querySelector('#onetrust-consent-sdk')?.remove());
+  }
+  await page.evaluate(() => document.querySelectorAll('.ad-slot').forEach((el) => el.remove()));
+};
+```
+
 The response and the HTML report now lead with a **Blocks affected (ranked)** roll-up: failing regions are aggregated per block across all viewports and ranked by a coverage-first composite (share of the block's own area that differs, then how many viewports it breaks in, then total diff pixels), grouped Blocks → Landmarks → Sections. Use it to decide which block to fix first. It covers only blocks that appear in a failing region — it does not enumerate clean blocks or detect blocks that are missing entirely (that remains a judgment call from comparing the live and migrated pages).
 
 **Input:** `mappingFile` (string, path to a CSV or JSON file of `{liveUrl, migratedUrl}` pairs), `projectDir?` (string)

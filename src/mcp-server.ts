@@ -36,7 +36,9 @@ Every runVisualTests and updateVisualSnapshots response includes a "Playwright r
 
 Every tool accepts an optional projectDir (absolute path to the target AEM project). It resolves automatically via CLAUDE_PROJECT_DIR when Claude Code is running from within that project; only pass it explicitly when calling from a host with no such notion (e.g. Mastra Studio).
 
-comparePageDiff supports an ignore mechanism for expected differences: a tools/page-diff/ignore.json file (user-authored, not installed automatically) listing rules that suppress specific regions -- by CSS selector on the migrated page, an explicit pixel region, or both -- scoped to a pairSlug or urlPattern and optionally a single viewport. Ignored regions still show up in the report (marked ignored) but don't count toward pass/fail.`;
+comparePageDiff supports an ignore mechanism for expected differences: a tools/page-diff/ignore.json file (user-authored, not installed automatically) listing rules that suppress specific regions -- by CSS selector on the migrated page, an explicit pixel region, or both -- scoped to a pairSlug or urlPattern and optionally a single viewport. Ignored regions still show up in the report (marked ignored) but don't count toward pass/fail.
+
+An optional tools/page-diff/prepare.js (user-authored, not installed) runs against every page after navigation and before any screenshot or DOM read -- across comparePageDiff, localizePageDiff, captureLiveBlock, and compareBlock. It exports async (page, ctx) => {} with ctx = { side, url, pairSlug, viewport } (side is 'live' or 'migrated') for removing cookie banners/ads or performing per-side actions so the two sides compare cleanly. If a live-only cookie-consent overlay is skewing the diff, tell the user they can add this file (or add it yourself if they ask) rather than trying to work around it.`;
 
 export const mcpServer = new MCPServer({
   name: 'pixel-guard',

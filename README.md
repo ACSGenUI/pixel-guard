@@ -67,6 +67,8 @@ Opens Studio at `http://localhost:4111`. Go to **MCP Servers → pixelGuard → 
 
 See [AGENTS.md](./AGENTS.md) for the full input schema and more example prompts per tool.
 
+> **Pre-screenshot hook:** drop an optional `tools/page-diff/prepare.js` in the target project to clean up each page before it's captured — remove cookie-consent banners, ads, or chat widgets, or perform actions (click/scroll/wait). It exports `async (page, ctx) => {}` (`ctx = { side, url, pairSlug, viewport }`, `side` is `'live'`/`'migrated'`) and runs across all page-diff tools. See [AGENTS.md](./AGENTS.md) for an example.
+
 > **Note:** the per-block pass/fail breakdown and diff-image paths in `runVisualTests` need Playwright's JSON reporter, which `aemVisualTestInstall` configures in the target project. If you installed pixel-guard into a project before this was added, re-run `aemVisualTestInstall` to pick it up.
 
 > **Note:** these tools deliberately don't use MCP elicitation (mid-tool-call interactive prompts) to ask yes/no questions — in practice, calls to it were silently failing through Claude Code, and the agent would improvise its own (worse, template-less) version of the feature instead of noticing anything had gone wrong. Anywhere a decision is needed, the tool's response instead tells the agent to ask the user through its own normal means, then call a follow-up tool with an explicit input reflecting the answer.
