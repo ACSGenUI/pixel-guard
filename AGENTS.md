@@ -33,7 +33,7 @@ None of these tools use MCP elicitation (mid-tool-call interactive prompts) to a
 
 ### `aemVisualTestInstall`
 
-Installs/scaffolds the AEM Visual Test environment in the target project: checks prerequisites, copies required files, updates project config, installs dependencies, and generates visual tests.
+Installs/scaffolds the AEM Visual Test environment in the target project: checks prerequisites, copies required files, updates project config, installs dependencies, and generates visual tests. It also installs a Claude Code skill at `.claude/skills/pixel-guard-visual-test-fix/` — an invokable "fix block visual regressions" loop (`/pixel-guard-visual-test-fix`) over `runVisualTests` / `updateVisualSnapshots`.
 
 If (and only if) that all succeeds, the response tells you to ask the user whether they also want:
 - a **GitHub Actions workflow** (`.github/workflows/visual-tests.yaml`) that runs the visual tests on pull requests and posts results as a PR comment, and/or
@@ -104,7 +104,7 @@ Sets up automatic visual-test runs in a project already installed via `aemVisual
 
 ### `installPageDiff`
 
-Installs the page-diff environment in the target project: copies `tools/page-diff/`, merges its npm scripts and dependencies (`playwright`, `pixelmatch`, `pngjs`) into `package.json`, and runs `npm install`. Fully independent of `aemVisualTestInstall` -- does not require the block-testing suite to be installed, and vice versa. No Docker or dev server involved (unlike `aemVisualTestInstall`), since page-diff only screenshots already-reachable URLs.
+Installs the page-diff environment in the target project: copies `tools/page-diff/`, merges its npm scripts and dependencies (`playwright`, `pixelmatch`, `pngjs`) into `package.json`, and runs `npm install`. It also installs a Claude Code skill at `.claude/skills/pixel-guard-page-diff-fix/` — an invokable, step-by-step "test & fix a migration" loop (`/pixel-guard-page-diff-fix`) that drives the page-diff tools in the right order. Fully independent of `aemVisualTestInstall` -- does not require the block-testing suite to be installed, and vice versa. No Docker or dev server involved (unlike `aemVisualTestInstall`), since page-diff only screenshots already-reachable URLs. Re-running the installer force-overwrites both `tools/page-diff/` and the skill (namespaced `pixel-guard-*`, so it never touches the client's own skills).
 
 **Input:** `projectDir?` (string)
 
