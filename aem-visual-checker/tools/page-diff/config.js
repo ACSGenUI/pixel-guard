@@ -19,3 +19,9 @@ export const THRESHOLDS = {
   pixelmatchThreshold: 0.1,
   ignoreOverlapRatio: 0.5,
 };
+
+export const ANCHOR_MATCH = {
+  minConfidence: 0.6,      // below this, surface candidates and ask for a liveSelector
+  maxTextAnchors: 5,       // longest text runs used as search anchors
+  maxAncestorAreaRatio: 0.6, // matched region beyond this fraction of page area is penalized
+};
