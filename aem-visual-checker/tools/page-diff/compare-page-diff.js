@@ -11,6 +11,7 @@ import {
 import { cropPng } from './lib/crop-images.js';
 import { collectBlockBoxes, assignRegionToBlock } from './lib/dom-capture.js';
 import { generateReportHtml } from './lib/report-html.js';
+import { buildBlockSummary } from './lib/block-summary.js';
 import { VIEWPORTS, THRESHOLDS } from './config.js';
 
 const LAUNCH_ARGS = ['--font-render-hinting=none', '--disable-font-subpixel-positioning', '--force-device-scale-factor=1'];
@@ -123,6 +124,7 @@ export async function runCompare({ mappingFile, targetDir }) {
         }
       }
 
+      pairSummary.blockSummary = buildBlockSummary(pairSummary.viewports);
       summary.pairs.push(pairSummary);
     }
   } finally {

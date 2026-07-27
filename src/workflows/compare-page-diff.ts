@@ -51,11 +51,25 @@ const viewportResultSchema = z.object({
   regions: z.array(regionSchema),
 });
 
+const blockRollupSchema = z.object({
+  kind: z.enum(['block', 'section', 'landmark']),
+  name: z.string(),
+  selector: z.string(),
+  regionCount: z.number(),
+  totalDiffPx: z.number(),
+  coverage: z.number(),
+  viewportsAffected: z.array(z.string()),
+  severityScore: z.number(),
+  worstViewport: z.string(),
+  worstCrop: z.string().nullable(),
+});
+
 const pairResultSchema = z.object({
   pairSlug: z.string(),
   liveUrl: z.string(),
   migratedUrl: z.string(),
   viewports: z.array(viewportResultSchema),
+  blockSummary: z.array(blockRollupSchema).optional(),
 });
 
 export const runSummarySchema = z.object({
