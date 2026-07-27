@@ -91,3 +91,42 @@ test('generateReportHtml escapes HTML-sensitive characters in URLs', () => {
   assert.doesNotMatch(html, /b=<2>/);
   assert.match(html, /b=&lt;2&gt;/);
 });
+
+test('renders a Block impact panel from pair.blockSummary, grouped by kind and escaped', () => {
+  const summary = {
+    runId: 'r', createdAt: 'c',
+    pairs: [{
+      pairSlug: 'home', liveUrl: 'https://l/', migratedUrl: 'https://m/',
+      blockSummary: [
+        {
+          kind: 'block', name: 'carousel-testimonial', selector: 's',
+          regionCount: 9, totalDiffPx: 1712285, coverage: 0.61,
+          viewportsAffected: ['Desktop', 'Large', 'Tablet'], severityScore: 0.61,
+          worstViewport: 'Large', worstCrop: 'home/large/region-5-diff.png',
+        },
+        {
+          kind: 'landmark', name: 'nav', selector: 's2',
+          regionCount: 2, totalDiffPx: 6904, coverage: 0.05,
+          viewportsAffected: ['Large'], severityScore: 0.05,
+          worstViewport: 'Large', worstCrop: null,
+        },
+      ],
+      viewports: [],
+    }],
+  };
+  const html = generateReportHtml(summary);
+  assert.match(html, /Block impact/);
+  assert.match(html, /Blocks<\/h4>/);
+  assert.match(html, /Landmarks<\/h4>/);
+  assert.match(html, /carousel-testimonial/);
+  assert.match(html, /61% coverage/);
+  assert.match(html, /home\/large\/region-5-diff\.png/);
+});
+
+test('omits the Block impact panel when a pair has no blockSummary', () => {
+  const summary = {
+    runId: 'r', createdAt: 'c',
+    pairs: [{ pairSlug: 'home', liveUrl: 'https://l/', migratedUrl: 'https://m/', viewports: [] }],
+  };
+  assert.doesNotMatch(generateReportHtml(summary), /Block impact/);
+});

@@ -121,6 +121,53 @@ function renderViewport(viewport) {
     </details>`;
 }
 
+const KIND_GROUP_LABEL = { block: 'Blocks', landmark: 'Landmarks', section: 'Sections' };
+
+function renderBlockImpactRow(item) {
+  const pct = Math.round(item.coverage * 100);
+  const vpChips = item.viewportsAffected
+    .map((v) => `<span class="vp-chip">${escapeHtml(v)}</span>`).join('');
+  const thumb = item.worstCrop
+    ? `<img class="bi-thumb" loading="lazy" src="${escapeHtml(item.worstCrop)}" alt="worst diff crop">`
+    : '';
+  return `
+      <div class="bi-row">
+        ${thumb}
+        <div class="bi-main">
+          <div class="bi-name">${escapeHtml(item.name)}</div>
+          <div class="bi-bar"><span style="width:${pct}%"></span></div>
+        </div>
+        <div class="bi-meta">
+          <span class="bi-cov">${pct}% coverage</span>
+          <span>${item.viewportsAffected.length} viewport${item.viewportsAffected.length === 1 ? '' : 's'}</span>
+          ${vpChips}
+          <span>${item.regionCount} region${item.regionCount === 1 ? '' : 's'}</span>
+          <span>${item.totalDiffPx.toLocaleString('en-US')} px</span>
+        </div>
+      </div>`;
+}
+
+// At-a-glance ranked roll-up at the top of a pair: which blocks are most broken, by coverage.
+function renderBlockImpact(pair) {
+  const summary = pair.blockSummary ?? [];
+  if (summary.length === 0) return '';
+  const byKind = { block: [], landmark: [], section: [] };
+  summary.forEach((item) => { (byKind[item.kind] ?? byKind.block).push(item); });
+  const groups = ['block', 'landmark', 'section']
+    .filter((kind) => byKind[kind].length > 0)
+    .map((kind) => `
+    <div class="bi-kind">
+      <h4>${KIND_GROUP_LABEL[kind]}</h4>
+      ${byKind[kind].map(renderBlockImpactRow).join('')}
+    </div>`)
+    .join('');
+  return `
+  <section class="block-impact">
+    <h3>Block impact</h3>
+    ${groups}
+  </section>`;
+}
+
 // Location (URL pair) accordion — open by default.
 function renderPair(pair) {
   const status = pairStatus(pair);
@@ -131,6 +178,7 @@ function renderPair(pair) {
       <span class="chip ${status}">${status.toUpperCase()}</span>
       <span class="urls">${escapeHtml(pair.liveUrl)} <span class="arrow">→</span> ${escapeHtml(pair.migratedUrl)}</span>
     </summary>
+    ${renderBlockImpact(pair)}
     ${pair.viewports.map(renderViewport).join('')}
   </details>`;
 }
@@ -193,7 +241,19 @@ const STYLES = `
     .crops img { display: block; max-width: 260px; max-height: 320px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
     .elements { margin: 0 0 .7rem; padding: 0 .8rem 0 2rem; font-size: .8rem; }
     .elements code { background: #f1f3f4; padding: 1px 4px; border-radius: 3px; }
-    .elements .styles { color: var(--muted); margin-left: .4rem; }`;
+    .elements .styles { color: var(--muted); margin-left: .4rem; }
+    section.block-impact { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin: .6rem 0 .6rem .5rem; padding: .6rem .9rem; }
+    section.block-impact h3 { margin: 0 0 .5rem; font-size: .95rem; }
+    .bi-kind h4 { margin: .5rem 0 .3rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .bi-row { display: flex; align-items: center; gap: .7rem; padding: .35rem 0; border-top: 1px solid var(--line); }
+    .bi-thumb { width: 60px; height: 40px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; flex: none; }
+    .bi-main { flex: 1; min-width: 0; }
+    .bi-name { font-weight: 600; font-size: .88rem; }
+    .bi-bar { height: 6px; background: var(--line); border-radius: 999px; margin-top: .25rem; overflow: hidden; }
+    .bi-bar span { display: block; height: 100%; background: var(--fail); }
+    .bi-meta { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .74rem; color: var(--muted); }
+    .bi-cov { font-weight: 700; color: var(--ink); }
+    .vp-chip { font-size: .66rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 .3rem; }`;
 
 const TOGGLE_SCRIPT = `
     document.querySelector('.toolbar').addEventListener('click', function (event) {
