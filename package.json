@@ -1,40 +1,31 @@
 {
   "name": "pixel-guard",
   "version": "1.0.0",
-  "type": "module",
-  "main": "server.ts",
+  "description": "",
+  "main": "src/index.ts",
   "scripts": {
-    "build": "tsc --noEmit && cross-env INPUT=pixel-guard.html vite build && tsc -p tsconfig.server.json",
-    "watch": "cross-env INPUT=pixel-guard.html vite build --watch",
-    "serve": "tsx main.ts",
-    "start": "cross-env NODE_ENV=development npm run build && npm run serve",
-    "dev": "cross-env NODE_ENV=development concurrently \"npm run watch\" \"npm run serve\""
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "test": "tsx --test 'src/**/*.test.ts'",
+    "studio": "mastra dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@work:ACSGenUI/pixel-guard"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "Pixel Guard - UI Visual Validator MCP App",
+  "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^1.0.1",
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "zod": "^4.3.6"
+    "@mastra/core": "^1.50.1",
+    "@mastra/mcp": "^1.13.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "^25.2.3",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.4",
-    "concurrently": "^9.2.1",
-    "cross-env": "^10.1.0",
+    "@types/node": "^26.1.1",
+    "mastra": "^1.19.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "vite-plugin-singlefile": "^2.3.0"
+    "typescript": "^5.7.2"
   }
 }

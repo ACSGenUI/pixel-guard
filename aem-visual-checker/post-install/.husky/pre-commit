@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run lint-staged first
+# npx lint-staged
+
+# Check VISUAL_TEST from .env file
+if grep -q "^VISUAL_TEST=false" .env; then
+  echo "Skipping visual tests (VISUAL_TEST=false in .env)"
+  exit 0
+fi
+
+# Function to run visual tests
+run_visual_tests() {
+  echo "Running visual tests (attempt $1 of $2)..."
+  if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+    echo "❌ Docker is required to run visual tests (they only run in Docker) but is not available/running."
+    return 1
+  fi
+  npm run test:visual
+  return $?
+}
+
+# Run visual tests with retries
+MAX_ATTEMPTS=2
+attempt=1
+
+while [ $attempt -le $MAX_ATTEMPTS ]; do
+  run_visual_tests $attempt $MAX_ATTEMPTS
+  if [ $? -eq 0 ]; then
+    echo "✅ Visual tests passed!"
+    git add .
+    exit 0
+  else
+    if [ $attempt -eq $MAX_ATTEMPTS ]; then
+      echo "❌ Visual tests failed after $MAX_ATTEMPTS attempts. Please fix the issues before committing."
+      exit 1
+    else
+      echo "⚠️  Retrying in 2 seconds..."
+      attempt=$((attempt + 1))
+      sleep 2
+    fi
+  fi
+done
