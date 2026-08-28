@@ -3,11 +3,18 @@
   "version": "1.0.0",
   "description": "",
   "main": "src/index.ts",
+  "bin": {
+    "pixel-guard": "build/src/index.js"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "test": "tsx --test 'src/**/*.test.ts'",
-    "studio": "mastra dev"
+    "studio": "mastra dev",
+    "prebuild": "rm -rf build",
+    "build": "tsc -p tsconfig.json",
+    "postbuild": "chmod +x build/src/index.js",
+    "prepare": "npm run build"
   },
   "repository": {
     "type": "git",
