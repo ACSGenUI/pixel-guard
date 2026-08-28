@@ -7,7 +7,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "allowJs": true,
-    "outDir": "dist"
+    "outDir": "build"
   },
-  "include": ["src", "aem-visual-checker/changes.js"]
+  "include": ["src", "aem-visual-checker/changes.js"],
+  "exclude": ["src/**/*.test.ts"]
 }
