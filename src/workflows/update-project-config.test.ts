@@ -169,6 +169,23 @@ test('addLoadScriptImport adds loadScript to a single-line import from ./aem.js'
   }
 });
 
+test('addLoadScriptImport adds loadScript to a single-line import from ./lib-franklin.js', async () => {
+  const dir = await makeTempDir();
+  try {
+    const filePath = join(dir, 'scripts.js');
+    await writeFile(filePath, "import { buildBlock, loadHeader } from './lib-franklin.js';\n");
+
+    await addLoadScriptImport(filePath);
+
+    assert.equal(
+      await readFile(filePath, 'utf8'),
+      "import { buildBlock, loadHeader, loadScript } from './lib-franklin.js';\n",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('addLoadScriptImport is idempotent when loadScript is already imported', async () => {
   const dir = await makeTempDir();
   try {

@@ -26,6 +26,23 @@ test('findMissingProjectPaths returns an empty array when all required paths exi
   }
 });
 
+test('findMissingProjectPaths accepts scripts/lib-franklin.js in place of scripts/aem.js', async () => {
+  const dir = await makeTempProjectDir();
+  try {
+    await mkdir(join(dir, 'blocks'));
+    await mkdir(join(dir, 'scripts'));
+    await writeFile(join(dir, 'scripts', 'lib-franklin.js'), '');
+    await writeFile(join(dir, 'package.json'), '{}');
+    await writeFile(join(dir, 'head.html'), '');
+
+    const missing = await findMissingProjectPaths(dir);
+
+    assert.deepEqual(missing, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('findMissingProjectPaths reports every missing required path, in order', async () => {
   const dir = await makeTempProjectDir();
   try {

@@ -34,19 +34,25 @@ Debug points:
   - Check if all pages are published.
   - Manually check if this looks right in this link: http://localhost:3000/tools/sidekick/library.html`;
 
-const REQUIRED_PROJECT_PATHS: Array<{ relativePath: string; label: string }> = [
-  { relativePath: 'blocks', label: 'blocks/ folder' },
-  { relativePath: 'scripts/aem.js', label: 'scripts/aem.js' },
-  { relativePath: 'package.json', label: 'package.json' },
-  { relativePath: 'head.html', label: 'head.html' },
+const REQUIRED_PROJECT_PATHS: Array<{ relativePaths: string[]; label: string }> = [
+  { relativePaths: ['blocks'], label: 'blocks/ folder' },
+  { relativePaths: ['scripts/aem.js', 'scripts/lib-franklin.js'], label: 'scripts/aem.js' },
+  { relativePaths: ['package.json'], label: 'package.json' },
+  { relativePaths: ['head.html'], label: 'head.html' },
 ];
 
 export async function findMissingProjectPaths(baseDir: string): Promise<string[]> {
   const missing: string[] = [];
-  for (const { relativePath, label } of REQUIRED_PROJECT_PATHS) {
-    try {
-      await access(join(baseDir, relativePath));
-    } catch {
+  for (const { relativePaths, label } of REQUIRED_PROJECT_PATHS) {
+    const exists = await Promise.all(
+      relativePaths.map((relativePath) =>
+        access(join(baseDir, relativePath)).then(
+          () => true,
+          () => false,
+        ),
+      ),
+    );
+    if (!exists.some(Boolean)) {
       missing.push(label);
     }
   }

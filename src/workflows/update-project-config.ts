@@ -36,13 +36,13 @@ export async function appendMissingLines(filePath: string, lines: string[]): Pro
   await writeFile(filePath, `${prefix}${missingLines.join('\n')}\n`, 'utf8');
 }
 
-const AEM_JS_IMPORT_PATTERN = /import\s*\{([\s\S]*?)\}\s*from\s*(['"])\.\/aem\.js\2/;
+const AEM_JS_IMPORT_PATTERN = /import\s*\{([\s\S]*?)\}\s*from\s*(['"])\.\/(?:aem|lib-franklin)\.js\2/;
 
 export async function addLoadScriptImport(scriptsJsPath: string): Promise<void> {
   const content = await readFile(scriptsJsPath, 'utf8');
   const match = content.match(AEM_JS_IMPORT_PATTERN);
   if (!match || match.index === undefined) {
-    throw new Error(`Could not find an import from './aem.js' in ${scriptsJsPath}.`);
+    throw new Error(`Could not find an import from './aem.js' or './lib-franklin.js' in ${scriptsJsPath}.`);
   }
 
   const importedNames = match[1]
