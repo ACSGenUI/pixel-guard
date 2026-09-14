@@ -1,4 +1,4 @@
-# pixel-guard
+# ProGen Agentic AI - Pixel-guard 
 
 An MCP server that installs and drives automated visual regression testing for AEM Edge Delivery Services (EDS) projects.
 
